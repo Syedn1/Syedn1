@@ -1,0 +1,28 @@
+{
+  "title": "Home Control System",
+  "version": "1.0.0",
+  "outputDirectory": "./dist",
+  "contractFile": "./contract.cse2j",
+  "crestronCHFiveDeploy": {
+    "deviceAddress": "192.168.1.100",
+    "deviceUsername": "admin",
+    "devicePassword": "admin",
+    "debugOutput": false,
+    "deviceProtocol": "https",
+    "devicePort": 443,
+    "sftpDirectory": "/var/crestron/ui/app",
+    "promptForCredentials": true
+  },
+  "webXPanel": {
+    "enable": true,
+    "host": "192.168.1.100",
+    "ipId": "0x03",
+    "roomId": "main",
+    "authToken": ""
+  },
+  "display": {
+    "width": 1280,
+    "height": 800,
+    "targetDevices": ["TS-770", "TS-770-B", "iPad", "WebXPanel"]
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "host": "192.168.1.100",
+  "ipId": "0x03",
+  "roomId": "main",
+  "authToken": "",
+  "portNumber": 49200,
+  "ssl": false,
+  "maximizeWindow": true,
+  "extraParams": {
+    "x": 0,
+    "y": 0,
+    "xDisplay": "1",
+    "configFile": "WebXPanelApp"
+  }
+}

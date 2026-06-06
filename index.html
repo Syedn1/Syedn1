@@ -1,0 +1,769 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=1280, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="format-detection" content="telephone=no">
+  <title>Home Control</title>
+
+  <!-- CH5 Components & CrComLib -->
+  <script src="./node_modules/@crestron/ch5-crcomlib/build_bundles/cjs/cr-com-lib.js" onerror="window.__ch5Missing=true"></script>
+  <script src="./node_modules/@crestron/ch5-components/build_bundles/umd/cr-com-lib.js" onerror=""></script>
+  <script src="./node_modules/@crestron/ch5-webxpanel/build/cjs/index.js" onerror=""></script>
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="./src/css/variables.css">
+  <link rel="stylesheet" href="./src/css/base.css">
+  <link rel="stylesheet" href="./src/css/layout.css">
+  <link rel="stylesheet" href="./src/css/components.css">
+
+  <!-- Inline SVG icon definitions -->
+  <svg style="display:none" xmlns="http://www.w3.org/2000/svg">
+    <symbol id="icon-home" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>
+    </symbol>
+    <symbol id="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+      <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+    </symbol>
+    <symbol id="icon-thermometer" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M14 14.76V3.5a2.5 2.5 0 00-5 0v11.26a4.5 4.5 0 105 0z"/>
+    </symbol>
+    <symbol id="icon-music" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>
+    </symbol>
+    <symbol id="icon-blinds" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <line x1="3" y1="3" x2="21" y2="3"/><rect x="3" y="7" width="18" height="2" rx="1"/><rect x="3" y="12" width="18" height="2" rx="1"/>
+      <rect x="3" y="17" width="18" height="2" rx="1"/><line x1="12" y1="21" x2="12" y2="3"/>
+    </symbol>
+    <symbol id="icon-power" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M18.36 6.64a9 9 0 11-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/>
+    </symbol>
+    <symbol id="icon-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+      <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+    </symbol>
+    <symbol id="icon-minus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+      <line x1="5" y1="12" x2="19" y2="12"/>
+    </symbol>
+    <symbol id="icon-volume" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 010 7.07"/>
+      <path d="M19.07 4.93a10 10 0 010 14.14"/>
+    </symbol>
+    <symbol id="icon-volume-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+      <line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/>
+    </symbol>
+    <symbol id="icon-skip-back" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <polygon points="19 20 9 12 19 4 19 20"/><line x1="5" y1="19" x2="5" y2="5"/>
+    </symbol>
+    <symbol id="icon-play" viewBox="0 0 24 24" fill="currentColor">
+      <polygon points="5 3 19 12 5 21 5 3"/>
+    </symbol>
+    <symbol id="icon-pause" viewBox="0 0 24 24" fill="currentColor">
+      <rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>
+    </symbol>
+    <symbol id="icon-skip-fwd" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/>
+    </symbol>
+    <symbol id="icon-chevron-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="18 15 12 9 6 15"/>
+    </symbol>
+    <symbol id="icon-chevron-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="6 9 12 15 18 9"/>
+    </symbol>
+    <symbol id="icon-stop" viewBox="0 0 24 24" fill="currentColor">
+      <rect x="4" y="4" width="16" height="16" rx="2"/>
+    </symbol>
+    <symbol id="icon-sunrise" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M17 18a5 5 0 00-10 0"/><line x1="12" y1="2" x2="12" y2="9"/><line x1="4.22" y1="10.22" x2="5.64" y2="11.64"/>
+      <line x1="1" y1="18" x2="3" y2="18"/><line x1="21" y1="18" x2="23" y2="18"/><line x1="18.36" y1="11.64" x2="19.78" y2="10.22"/>
+      <line x1="23" y1="22" x2="1" y2="22"/><polyline points="8 6 12 2 16 6"/>
+    </symbol>
+    <symbol id="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>
+    </symbol>
+    <symbol id="icon-film" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/><line x1="7" y1="2" x2="7" y2="22"/>
+      <line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/>
+      <line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/>
+      <line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/>
+    </symbol>
+    <symbol id="icon-tv" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="2" y="7" width="20" height="15" rx="2" ry="2"/><polyline points="17 2 12 7 7 2"/>
+    </symbol>
+    <symbol id="icon-wifi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M1.42 9a16 16 0 0121.16 0"/><path d="M5 12.55a11 11 0 0114.08 0"/><path d="M10.54 16a6 6 0 012.92 0"/>
+      <line x1="12" y1="20" x2="12.01" y2="20"/>
+    </symbol>
+    <symbol id="icon-radio" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3 10l9-7 9 7"/><circle cx="12" cy="10" r="3"/><path d="M1 20h22v-2a8 8 0 00-8-8H9a8 8 0 00-8 8v2z"/>
+    </symbol>
+    <symbol id="icon-cast" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M2 16.1A5 5 0 015.9 20M2 12.05A9 9 0 019.95 20M2 8V6a2 2 0 012-2h16a2 2 0 012 2v12a2 2 0 01-2 2h-6"/>
+      <line x1="2" y1="20" x2="2.01" y2="20"/>
+    </symbol>
+    <symbol id="icon-droplets" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M7 16.3c2.2 0 4-1.83 4-4.05 0-1.16-.57-2.26-1.71-3.19S7.29 6.75 7 5.3c-.29 1.45-1.14 2.84-2.29 3.76S3 11.1 3 12.25c0 2.22 1.8 4.05 4 4.05z"/>
+      <path d="M12.56 6.6A10.97 10.97 0 0014 3.02c.5 2.5 2 4.9 4 6.5s3 3.5 3 5.5a6.98 6.98 0 01-11.91 4.97"/>
+    </symbol>
+    <symbol id="icon-fan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 12c1.5-2 1.5-4.5-.5-6s-5.5-.5-6 2c-.5 2.5 1 4 3.5 4.5"/>
+      <path d="M12 12c-2 1.5-4.5 1.5-6 3.5s-.5 5.5 2 6c2.5.5 4-1 4.5-3.5"/>
+      <path d="M12 12c1.5 2 4 2.5 6 1.5s3-4 1-5.5c-2-1.5-4-.5-5 2"/>
+      <circle cx="12" cy="12" r="2"/>
+    </symbol>
+    <symbol id="icon-away" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+    </symbol>
+    <symbol id="icon-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>
+    </symbol>
+    <symbol id="icon-bulb" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <line x1="9" y1="18" x2="15" y2="18"/><line x1="10" y1="22" x2="14" y2="22"/>
+      <path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0018 8 6 6 0 006 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 018.91 14"/>
+    </symbol>
+    <symbol id="icon-dinner" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M18 8h1a4 4 0 010 8h-1"/><path d="M2 8h16v9a4 4 0 01-4 4H6a4 4 0 01-4-4V8z"/>
+      <line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/>
+    </symbol>
+  </svg>
+</head>
+<body>
+<div id="app">
+
+  <!-- Connection Overlay -->
+  <div class="connection-overlay" id="connection-overlay">
+    <div class="connection-spinner"></div>
+    <div class="connection-text">Connecting</div>
+    <div class="connection-sub" id="connection-host">192.168.1.100</div>
+  </div>
+
+  <!-- Status Bar -->
+  <header class="status-bar">
+    <div class="status-bar__left">
+      <div class="status-indicator" id="status-indicator"></div>
+      <span class="status-bar__time" id="status-time">12:00</span>
+      <span class="status-bar__date" id="status-date">Fri, Jun 6</span>
+    </div>
+    <div class="status-bar__right">
+      <span class="status-bar__room">Main Living Area</span>
+      <span class="status-bar__temp">
+        <svg class="status-bar__icon"><use href="#icon-thermometer"/></svg>
+        <span id="status-temp">72°</span>
+      </span>
+      <span class="status-bar__temp">
+        <svg class="status-bar__icon"><use href="#icon-droplets"/></svg>
+        <span id="status-humidity">45%</span>
+      </span>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="main-content">
+
+    <!-- ════════════════════════════════
+         HOME PAGE
+    ════════════════════════════════ -->
+    <div class="page active" id="page-home">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Good Evening</div>
+          <div class="page-subtitle" id="home-greeting-sub">Welcome home</div>
+        </div>
+        <div class="chip chip--green">
+          <svg width="8" height="8"><circle cx="4" cy="4" r="3" fill="currentColor"/></svg>
+          All Systems Active
+        </div>
+      </div>
+
+      <!-- Quick Scenes -->
+      <div class="section">
+        <div class="section-title">Scenes</div>
+        <div class="quick-scene-row">
+          <div class="quick-scene" id="qs-morning" data-signal="preset_morning">
+            <svg class="quick-scene__icon"><use href="#icon-sunrise"/></svg>
+            <span class="quick-scene__label">Morning</span>
+          </div>
+          <div class="quick-scene" id="qs-evening" data-signal="preset_evening">
+            <svg class="quick-scene__icon"><use href="#icon-sun"/></svg>
+            <span class="quick-scene__label">Evening</span>
+          </div>
+          <div class="quick-scene" id="qs-movie" data-signal="preset_movie">
+            <svg class="quick-scene__icon"><use href="#icon-film"/></svg>
+            <span class="quick-scene__label">Movie</span>
+          </div>
+          <div class="quick-scene" id="qs-away" data-signal="scene_away">
+            <svg class="quick-scene__icon"><use href="#icon-away"/></svg>
+            <span class="quick-scene__label">Away</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Status Cards -->
+      <div class="section">
+        <div class="section-title">Status</div>
+        <div class="grid-4 gap-3">
+          <div class="status-card" onclick="CrestronApp.nav('lighting')">
+            <div class="status-card__icon accent">
+              <svg width="22" height="22"><use href="#icon-bulb"/></svg>
+            </div>
+            <div class="status-card__value" id="home-lights-count">4 on</div>
+            <div class="status-card__label">Lights</div>
+          </div>
+          <div class="status-card" onclick="CrestronApp.nav('climate')">
+            <div class="status-card__icon blue">
+              <svg width="22" height="22"><use href="#icon-thermometer"/></svg>
+            </div>
+            <div class="status-card__value" id="home-climate-display">72°F</div>
+            <div class="status-card__label">Climate</div>
+          </div>
+          <div class="status-card" onclick="CrestronApp.nav('av')">
+            <div class="status-card__icon purple">
+              <svg width="22" height="22"><use href="#icon-music"/></svg>
+            </div>
+            <div class="status-card__value" id="home-av-source">Apple TV</div>
+            <div class="status-card__label">Audio / Video</div>
+          </div>
+          <div class="status-card" onclick="CrestronApp.nav('shades')">
+            <div class="status-card__icon green">
+              <svg width="22" height="22"><use href="#icon-blinds"/></svg>
+            </div>
+            <div class="status-card__value" id="home-shades-status">Closed</div>
+            <div class="status-card__label">Shades</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- All Off Section -->
+      <div class="section">
+        <div class="section-title">Quick Actions</div>
+        <div class="grid-2 gap-3">
+          <button class="btn btn--default btn--lg btn--full" id="btn-all-lights-off" data-signal="lights_master_off">
+            <svg width="20" height="20"><use href="#icon-bulb"/></svg>
+            All Lights Off
+          </button>
+          <button class="btn btn--default btn--lg btn--full" id="btn-all-shades-close" data-signal="shades_preset_close">
+            <svg width="20" height="20"><use href="#icon-blinds"/></svg>
+            Close All Shades
+          </button>
+          <button class="btn btn--default btn--lg btn--full" id="btn-av-off" data-signal="av_power_off">
+            <svg width="20" height="20"><use href="#icon-tv"/></svg>
+            A/V System Off
+          </button>
+          <button class="btn btn--default btn--lg btn--full" id="btn-goodnight" data-signal="scene_goodnight">
+            <svg width="20" height="20"><use href="#icon-moon"/></svg>
+            Good Night
+          </button>
+        </div>
+      </div>
+    </div><!-- end #page-home -->
+
+    <!-- ════════════════════════════════
+         LIGHTING PAGE
+    ════════════════════════════════ -->
+    <div class="page" id="page-lighting">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Lighting</div>
+          <div class="page-subtitle">4 zones active</div>
+        </div>
+        <div style="display:flex;gap:var(--space-3)">
+          <button class="btn btn--default" id="btn-lights-all-on" data-signal="lights_master_on">All On</button>
+          <button class="btn btn--danger"  id="btn-lights-all-off" data-signal="lights_master_off">All Off</button>
+        </div>
+      </div>
+
+      <!-- Scene Presets -->
+      <div class="section">
+        <div class="section-title">Scenes</div>
+        <div class="grid-6">
+          <div class="scene-btn" id="scene-morning" data-signal="preset_morning">
+            <svg class="scene-btn__icon"><use href="#icon-sunrise"/></svg>
+            <span class="scene-btn__label">Morning</span>
+          </div>
+          <div class="scene-btn" id="scene-day" data-signal="preset_day">
+            <svg class="scene-btn__icon"><use href="#icon-sun"/></svg>
+            <span class="scene-btn__label">Day</span>
+          </div>
+          <div class="scene-btn" id="scene-evening" data-signal="preset_evening">
+            <svg class="scene-btn__icon"><use href="#icon-bulb"/></svg>
+            <span class="scene-btn__label">Evening</span>
+          </div>
+          <div class="scene-btn" id="scene-night" data-signal="preset_night">
+            <svg class="scene-btn__icon"><use href="#icon-moon"/></svg>
+            <span class="scene-btn__label">Night</span>
+          </div>
+          <div class="scene-btn" id="scene-movie" data-signal="preset_movie">
+            <svg class="scene-btn__icon"><use href="#icon-film"/></svg>
+            <span class="scene-btn__label">Movie</span>
+          </div>
+          <div class="scene-btn" id="scene-dinner" data-signal="preset_dinner">
+            <svg class="scene-btn__icon"><use href="#icon-dinner"/></svg>
+            <span class="scene-btn__label">Dinner</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Zone Controls -->
+      <div class="section">
+        <div class="section-title">Zone Controls</div>
+        <div style="display:flex;flex-direction:column;gap:var(--space-3)">
+
+          <!-- Zone 1 -->
+          <div class="zone-row" id="zone-row-1">
+            <span class="zone-row__name" id="zone1-name">Living Room</span>
+            <div class="toggle-track" id="zone1-toggle" data-signal="zone1_on">
+              <div class="toggle-thumb"></div>
+            </div>
+            <div class="slider-wrap" id="zone1-slider-wrap">
+              <input type="range" id="zone1-slider" min="0" max="100" value="75"
+                     data-signal="zone1_level" aria-label="Living Room brightness">
+              <div class="slider-track-fill" id="zone1-fill" style="width:75%"></div>
+            </div>
+            <span class="zone-row__value" id="zone1-value">75%</span>
+          </div>
+
+          <!-- Zone 2 -->
+          <div class="zone-row" id="zone-row-2">
+            <span class="zone-row__name" id="zone2-name">Kitchen</span>
+            <div class="toggle-track" id="zone2-toggle" data-signal="zone2_on">
+              <div class="toggle-thumb"></div>
+            </div>
+            <div class="slider-wrap" id="zone2-slider-wrap">
+              <input type="range" id="zone2-slider" min="0" max="100" value="60"
+                     data-signal="zone2_level" aria-label="Kitchen brightness">
+              <div class="slider-track-fill" id="zone2-fill" style="width:60%"></div>
+            </div>
+            <span class="zone-row__value" id="zone2-value">60%</span>
+          </div>
+
+          <!-- Zone 3 -->
+          <div class="zone-row" id="zone-row-3">
+            <span class="zone-row__name" id="zone3-name">Dining Room</span>
+            <div class="toggle-track" id="zone3-toggle" data-signal="zone3_on">
+              <div class="toggle-thumb"></div>
+            </div>
+            <div class="slider-wrap" id="zone3-slider-wrap">
+              <input type="range" id="zone3-slider" min="0" max="100" value="40"
+                     data-signal="zone3_level" aria-label="Dining Room brightness">
+              <div class="slider-track-fill" id="zone3-fill" style="width:40%"></div>
+            </div>
+            <span class="zone-row__value" id="zone3-value">40%</span>
+          </div>
+
+          <!-- Zone 4 -->
+          <div class="zone-row" id="zone-row-4">
+            <span class="zone-row__name" id="zone4-name">Entry</span>
+            <div class="toggle-track" id="zone4-toggle" data-signal="zone4_on">
+              <div class="toggle-thumb"></div>
+            </div>
+            <div class="slider-wrap" id="zone4-slider-wrap">
+              <input type="range" id="zone4-slider" min="0" max="100" value="0"
+                     data-signal="zone4_level" aria-label="Entry brightness">
+              <div class="slider-track-fill" id="zone4-fill" style="width:0%"></div>
+            </div>
+            <span class="zone-row__value" id="zone4-value">Off</span>
+          </div>
+
+        </div>
+      </div>
+    </div><!-- end #page-lighting -->
+
+    <!-- ════════════════════════════════
+         CLIMATE PAGE
+    ════════════════════════════════ -->
+    <div class="page" id="page-climate">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Climate</div>
+          <div class="page-subtitle" id="climate-status-text">Cooling to 68°F</div>
+        </div>
+        <div class="chip chip--blue" id="climate-mode-chip">Auto</div>
+      </div>
+
+      <div class="grid-2 gap-4">
+
+        <!-- Thermostat Card -->
+        <div class="card">
+          <div class="card__header">
+            <div class="card__title">Temperature</div>
+            <svg width="20" height="20" style="color:var(--color-text-secondary)"><use href="#icon-thermometer"/></svg>
+          </div>
+
+          <div class="thermostat-display">
+            <div class="thermostat-current">
+              <span id="current-temp">72</span><span class="thermostat-unit">°F</span>
+            </div>
+            <div class="thermostat-status" id="hvac-status-text">Cooling Active</div>
+
+            <div class="thermostat-setpoint">
+              <!-- Cool setpoint -->
+              <div class="setpoint-value">
+                <div class="setpoint-label">Cool</div>
+                <div class="setpoint-temp cool" id="setpoint-cool-val">68°</div>
+                <div class="setpoint-btns">
+                  <button class="btn btn--icon btn--ghost" id="cool-sp-up" data-signal="setpoint_up" aria-label="Increase cool setpoint">
+                    <svg width="18" height="18"><use href="#icon-chevron-up"/></svg>
+                  </button>
+                  <button class="btn btn--icon btn--ghost" id="cool-sp-down" data-signal="setpoint_down" aria-label="Decrease cool setpoint">
+                    <svg width="18" height="18"><use href="#icon-chevron-down"/></svg>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Heat setpoint -->
+              <div class="setpoint-value">
+                <div class="setpoint-label">Heat</div>
+                <div class="setpoint-temp heat" id="setpoint-heat-val">65°</div>
+                <div class="setpoint-btns">
+                  <button class="btn btn--icon btn--ghost" id="heat-sp-up" aria-label="Increase heat setpoint">
+                    <svg width="18" height="18"><use href="#icon-chevron-up"/></svg>
+                  </button>
+                  <button class="btn btn--icon btn--ghost" id="heat-sp-down" aria-label="Decrease heat setpoint">
+                    <svg width="18" height="18"><use href="#icon-chevron-down"/></svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Mode & Fan Card -->
+        <div class="flex-col gap-4">
+          <div class="card">
+            <div class="card__header">
+              <div class="card__title">Mode</div>
+            </div>
+            <div class="mode-group">
+              <button class="mode-btn cool is-active" id="mode-cool" data-signal="hvac_mode_cool">Cool</button>
+              <button class="mode-btn heat" id="mode-heat" data-signal="hvac_mode_heat">Heat</button>
+              <button class="mode-btn auto" id="mode-auto" data-signal="hvac_mode_auto">Auto</button>
+              <button class="mode-btn" id="mode-off" data-signal="hvac_mode_off">Off</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card__header">
+              <div class="card__title">Fan Speed</div>
+              <svg width="20" height="20" style="color:var(--color-text-secondary)"><use href="#icon-fan"/></svg>
+            </div>
+            <div class="mode-group">
+              <button class="mode-btn is-active" id="fan-auto" data-signal="fan_speed_auto">Auto</button>
+              <button class="mode-btn" id="fan-low"  data-signal="fan_speed_low">Low</button>
+              <button class="mode-btn" id="fan-med"  data-signal="fan_speed_med">Med</button>
+              <button class="mode-btn" id="fan-high" data-signal="fan_speed_high">High</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card__header">
+              <div class="card__title">Humidity</div>
+              <svg width="20" height="20" style="color:var(--color-text-secondary)"><use href="#icon-droplets"/></svg>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between">
+              <span style="font-size:var(--text-3xl);font-weight:var(--font-bold)" id="humidity-display">45</span>
+              <span style="font-size:var(--text-lg);color:var(--color-text-secondary)">% RH</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div><!-- end #page-climate -->
+
+    <!-- ════════════════════════════════
+         AUDIO/VIDEO PAGE
+    ════════════════════════════════ -->
+    <div class="page" id="page-av">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Audio / Video</div>
+          <div class="page-subtitle" id="av-status-sub">Apple TV — Living Room</div>
+        </div>
+        <!-- Power button -->
+        <div class="power-btn is-on" id="av-power-btn"
+             aria-label="Toggle A/V power" role="button" tabindex="0">
+          <svg width="32" height="32"><use href="#icon-power"/></svg>
+        </div>
+      </div>
+
+      <!-- Source Selection -->
+      <div class="section">
+        <div class="section-title">Source</div>
+        <div class="grid-6">
+          <div class="source-btn is-active" id="src-appletv" data-signal="source_appletv">
+            <svg class="source-btn__icon"><use href="#icon-cast"/></svg>
+            <span class="source-btn__label">Apple TV</span>
+          </div>
+          <div class="source-btn" id="src-tv" data-signal="source_tv">
+            <svg class="source-btn__icon"><use href="#icon-tv"/></svg>
+            <span class="source-btn__label">TV</span>
+          </div>
+          <div class="source-btn" id="src-cable" data-signal="source_cable">
+            <svg class="source-btn__icon"><use href="#icon-wifi"/></svg>
+            <span class="source-btn__label">Cable</span>
+          </div>
+          <div class="source-btn" id="src-bluray" data-signal="source_bluray">
+            <svg class="source-btn__icon"><use href="#icon-film"/></svg>
+            <span class="source-btn__label">Blu-ray</span>
+          </div>
+          <div class="source-btn" id="src-radio" data-signal="source_radio">
+            <svg class="source-btn__icon"><use href="#icon-radio"/></svg>
+            <span class="source-btn__label">Radio</span>
+          </div>
+          <div class="source-btn" id="src-aux" data-signal="source_aux">
+            <svg class="source-btn__icon"><use href="#icon-music"/></svg>
+            <span class="source-btn__label">Aux</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid-2 gap-4">
+
+        <!-- Now Playing + Transport -->
+        <div class="card">
+          <div class="card__header">
+            <div class="card__title">Now Playing</div>
+          </div>
+
+          <div class="now-playing" style="margin-bottom:var(--space-6)">
+            <div class="now-playing__art" id="np-art">
+              <svg width="28" height="28"><use href="#icon-music"/></svg>
+            </div>
+            <div class="now-playing__info">
+              <div class="now-playing__title" id="np-title">Midnight City</div>
+              <div class="now-playing__source" id="np-source">M83 — Apple TV Music</div>
+            </div>
+          </div>
+
+          <div class="transport-controls">
+            <button class="btn--transport" id="btn-prev" data-signal="transport_prev" aria-label="Previous">
+              <svg width="22" height="22"><use href="#icon-skip-back"/></svg>
+            </button>
+            <button class="btn--transport btn--transport-lg" id="btn-play" data-signal="transport_play" aria-label="Play/Pause">
+              <svg width="28" height="28" id="play-icon"><use href="#icon-play"/></svg>
+            </button>
+            <button class="btn--transport" id="btn-next" data-signal="transport_next" aria-label="Next">
+              <svg width="22" height="22"><use href="#icon-skip-fwd"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Volume Control -->
+        <div class="card">
+          <div class="card__header">
+            <div class="card__title">Volume</div>
+            <button class="btn btn--icon btn--ghost" id="btn-mute" data-signal="vol_mute" aria-label="Mute">
+              <svg width="22" height="22" id="mute-icon"><use href="#icon-volume"/></svg>
+            </button>
+          </div>
+
+          <div style="margin-bottom:var(--space-6)">
+            <div style="font-size:var(--text-5xl);font-weight:var(--font-bold);text-align:center;font-variant-numeric:tabular-nums;margin-bottom:var(--space-4)">
+              <span id="vol-display">45</span>
+            </div>
+
+            <div class="volume-row">
+              <button class="btn btn--icon btn--ghost" id="btn-vol-down" data-signal="vol_down" aria-label="Volume Down">
+                <svg width="20" height="20"><use href="#icon-minus"/></svg>
+              </button>
+              <div class="slider-wrap volume">
+                <input type="range" id="vol-slider" min="0" max="100" value="45"
+                       data-signal="volume_level" aria-label="Volume level">
+                <div class="slider-track-fill" id="vol-fill" style="width:45%;background:var(--color-blue)"></div>
+              </div>
+              <button class="btn btn--icon btn--ghost" id="btn-vol-up" data-signal="vol_up" aria-label="Volume Up">
+                <svg width="20" height="20"><use href="#icon-plus"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Quick volume presets -->
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:var(--space-2)">
+            <button class="btn btn--ghost" onclick="CrestronApp.setVolume(25)">25</button>
+            <button class="btn btn--ghost" onclick="CrestronApp.setVolume(40)">40</button>
+            <button class="btn btn--ghost" onclick="CrestronApp.setVolume(60)">60</button>
+            <button class="btn btn--ghost" onclick="CrestronApp.setVolume(80)">80</button>
+          </div>
+        </div>
+
+      </div>
+    </div><!-- end #page-av -->
+
+    <!-- ════════════════════════════════
+         SHADES PAGE
+    ════════════════════════════════ -->
+    <div class="page" id="page-shades">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Shades</div>
+          <div class="page-subtitle">4 zones</div>
+        </div>
+      </div>
+
+      <!-- Shade Presets -->
+      <div class="section">
+        <div class="section-title">Scenes</div>
+        <div class="grid-4">
+          <button class="btn btn--default btn--lg" data-signal="shades_preset_open">
+            <svg width="18" height="18"><use href="#icon-chevron-up"/></svg>
+            Open All
+          </button>
+          <button class="btn btn--default btn--lg" data-signal="shades_preset_privacy">
+            <svg width="18" height="18"><use href="#icon-blinds"/></svg>
+            Privacy
+          </button>
+          <button class="btn btn--default btn--lg" data-signal="shades_preset_blackout">
+            <svg width="18" height="18"><use href="#icon-moon"/></svg>
+            Blackout
+          </button>
+          <button class="btn btn--danger btn--lg" data-signal="shades_preset_close">
+            <svg width="18" height="18"><use href="#icon-chevron-down"/></svg>
+            Close All
+          </button>
+        </div>
+      </div>
+
+      <!-- Zone Controls -->
+      <div class="section">
+        <div class="section-title">Zone Controls</div>
+        <div style="display:flex;flex-direction:column;gap:var(--space-3)">
+
+          <!-- Shade Zone 1 -->
+          <div class="shade-row">
+            <div>
+              <div class="shade-row__name">Living Room</div>
+              <div class="shade-row__position" id="shade1-pos-label">Closed (0%)</div>
+            </div>
+            <div class="slider-wrap" style="margin-right:var(--space-4)">
+              <input type="range" id="shade1-slider" min="0" max="100" value="0"
+                     data-signal="shade1_position" aria-label="Living Room shade position">
+              <div class="slider-track-fill" id="shade1-fill" style="width:0%"></div>
+            </div>
+            <div class="shade-controls">
+              <button class="btn btn--icon btn--default" data-signal="shade1_open" aria-label="Open shade">
+                <svg width="18" height="18"><use href="#icon-chevron-up"/></svg>
+              </button>
+              <button class="btn btn--icon btn--default" data-signal="shade1_stop" aria-label="Stop shade">
+                <svg width="14" height="14"><use href="#icon-stop"/></svg>
+              </button>
+              <button class="btn btn--icon btn--default" data-signal="shade1_close" aria-label="Close shade">
+                <svg width="18" height="18"><use href="#icon-chevron-down"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Shade Zone 2 -->
+          <div class="shade-row">
+            <div>
+              <div class="shade-row__name">Master Bedroom</div>
+              <div class="shade-row__position" id="shade2-pos-label">Closed (0%)</div>
+            </div>
+            <div class="slider-wrap" style="margin-right:var(--space-4)">
+              <input type="range" id="shade2-slider" min="0" max="100" value="0"
+                     data-signal="shade2_position" aria-label="Master Bedroom shade position">
+              <div class="slider-track-fill" id="shade2-fill" style="width:0%"></div>
+            </div>
+            <div class="shade-controls">
+              <button class="btn btn--icon btn--default" data-signal="shade2_open" aria-label="Open shade">
+                <svg width="18" height="18"><use href="#icon-chevron-up"/></svg>
+              </button>
+              <button class="btn btn--icon btn--default" data-signal="shade2_stop" aria-label="Stop shade">
+                <svg width="14" height="14"><use href="#icon-stop"/></svg>
+              </button>
+              <button class="btn btn--icon btn--default" data-signal="shade2_close" aria-label="Close shade">
+                <svg width="18" height="18"><use href="#icon-chevron-down"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Shade Zone 3 -->
+          <div class="shade-row">
+            <div>
+              <div class="shade-row__name">Kitchen</div>
+              <div class="shade-row__position" id="shade3-pos-label">Closed (0%)</div>
+            </div>
+            <div class="slider-wrap" style="margin-right:var(--space-4)">
+              <input type="range" id="shade3-slider" min="0" max="100" value="0"
+                     data-signal="shade3_position" aria-label="Kitchen shade position">
+              <div class="slider-track-fill" id="shade3-fill" style="width:0%"></div>
+            </div>
+            <div class="shade-controls">
+              <button class="btn btn--icon btn--default" data-signal="shade3_open" aria-label="Open shade">
+                <svg width="18" height="18"><use href="#icon-chevron-up"/></svg>
+              </button>
+              <button class="btn btn--icon btn--default" data-signal="shade3_stop" aria-label="Stop shade">
+                <svg width="14" height="14"><use href="#icon-stop"/></svg>
+              </button>
+              <button class="btn btn--icon btn--default" data-signal="shade3_close" aria-label="Close shade">
+                <svg width="18" height="18"><use href="#icon-chevron-down"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Shade Zone 4 -->
+          <div class="shade-row">
+            <div>
+              <div class="shade-row__name">Home Office</div>
+              <div class="shade-row__position" id="shade4-pos-label">Closed (0%)</div>
+            </div>
+            <div class="slider-wrap" style="margin-right:var(--space-4)">
+              <input type="range" id="shade4-slider" min="0" max="100" value="0"
+                     data-signal="shade4_position" aria-label="Home Office shade position">
+              <div class="slider-track-fill" id="shade4-fill" style="width:0%"></div>
+            </div>
+            <div class="shade-controls">
+              <button class="btn btn--icon btn--default" data-signal="shade4_open" aria-label="Open shade">
+                <svg width="18" height="18"><use href="#icon-chevron-up"/></svg>
+              </button>
+              <button class="btn btn--icon btn--default" data-signal="shade4_stop" aria-label="Stop shade">
+                <svg width="14" height="14"><use href="#icon-stop"/></svg>
+              </button>
+              <button class="btn btn--icon btn--default" data-signal="shade4_close" aria-label="Close shade">
+                <svg width="18" height="18"><use href="#icon-chevron-down"/></svg>
+              </button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div><!-- end #page-shades -->
+
+  </main><!-- end main-content -->
+
+  <!-- Bottom Navigation -->
+  <nav class="nav-bar" role="navigation" aria-label="Main navigation">
+    <div class="nav-item active" id="nav-home" onclick="CrestronApp.nav('home')" role="button" tabindex="0" aria-label="Home">
+      <svg class="nav-item__icon"><use href="#icon-home"/></svg>
+      <span class="nav-item__label">Home</span>
+    </div>
+    <div class="nav-item" id="nav-lighting" onclick="CrestronApp.nav('lighting')" role="button" tabindex="0" aria-label="Lighting">
+      <svg class="nav-item__icon"><use href="#icon-bulb"/></svg>
+      <span class="nav-item__label">Lights</span>
+    </div>
+    <div class="nav-item" id="nav-climate" onclick="CrestronApp.nav('climate')" role="button" tabindex="0" aria-label="Climate">
+      <svg class="nav-item__icon"><use href="#icon-thermometer"/></svg>
+      <span class="nav-item__label">Climate</span>
+    </div>
+    <div class="nav-item" id="nav-av" onclick="CrestronApp.nav('av')" role="button" tabindex="0" aria-label="Audio Video">
+      <svg class="nav-item__icon"><use href="#icon-music"/></svg>
+      <span class="nav-item__label">A/V</span>
+    </div>
+    <div class="nav-item" id="nav-shades" onclick="CrestronApp.nav('shades')" role="button" tabindex="0" aria-label="Shades">
+      <svg class="nav-item__icon"><use href="#icon-blinds"/></svg>
+      <span class="nav-item__label">Shades</span>
+    </div>
+  </nav>
+
+  <!-- Toast Container -->
+  <div class="toast-container" id="toast-container"></div>
+
+</div><!-- end #app -->
+
+<!-- Application scripts -->
+<script type="module" src="./src/js/app.js"></script>
+</body>
+</html>

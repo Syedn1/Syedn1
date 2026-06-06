@@ -1,0 +1,158 @@
+{
+  "Contract": {
+    "Device": {
+      "Description": "Home Control System Contract",
+      "Components": {
+        "Lighting": {
+          "contract": {
+            "Boolean": [
+              { "name": "lights_master_on",  "direction": "event" },
+              { "name": "lights_master_off", "direction": "event" },
+              { "name": "lights_master_on_fb", "direction": "state" },
+              { "name": "preset_morning",    "direction": "event" },
+              { "name": "preset_day",        "direction": "event" },
+              { "name": "preset_evening",    "direction": "event" },
+              { "name": "preset_night",      "direction": "event" },
+              { "name": "preset_movie",      "direction": "event" },
+              { "name": "preset_morning_fb", "direction": "state" },
+              { "name": "preset_day_fb",     "direction": "state" },
+              { "name": "preset_evening_fb", "direction": "state" },
+              { "name": "preset_night_fb",   "direction": "state" },
+              { "name": "preset_movie_fb",   "direction": "state" },
+              { "name": "zone1_on",  "direction": "event" },
+              { "name": "zone2_on",  "direction": "event" },
+              { "name": "zone3_on",  "direction": "event" },
+              { "name": "zone4_on",  "direction": "event" },
+              { "name": "zone1_on_fb", "direction": "state" },
+              { "name": "zone2_on_fb", "direction": "state" },
+              { "name": "zone3_on_fb", "direction": "state" },
+              { "name": "zone4_on_fb", "direction": "state" }
+            ],
+            "Number": [
+              { "name": "zone1_level",    "direction": "event" },
+              { "name": "zone2_level",    "direction": "event" },
+              { "name": "zone3_level",    "direction": "event" },
+              { "name": "zone4_level",    "direction": "event" },
+              { "name": "zone1_level_fb", "direction": "state" },
+              { "name": "zone2_level_fb", "direction": "state" },
+              { "name": "zone3_level_fb", "direction": "state" },
+              { "name": "zone4_level_fb", "direction": "state" }
+            ],
+            "String": [
+              { "name": "zone1_name_fb", "direction": "state" },
+              { "name": "zone2_name_fb", "direction": "state" },
+              { "name": "zone3_name_fb", "direction": "state" },
+              { "name": "zone4_name_fb", "direction": "state" }
+            ]
+          }
+        },
+        "Climate": {
+          "contract": {
+            "Boolean": [
+              { "name": "hvac_mode_cool",    "direction": "event" },
+              { "name": "hvac_mode_heat",    "direction": "event" },
+              { "name": "hvac_mode_auto",    "direction": "event" },
+              { "name": "hvac_mode_off",     "direction": "event" },
+              { "name": "hvac_mode_cool_fb", "direction": "state" },
+              { "name": "hvac_mode_heat_fb", "direction": "state" },
+              { "name": "hvac_mode_auto_fb", "direction": "state" },
+              { "name": "hvac_mode_off_fb",  "direction": "state" },
+              { "name": "fan_speed_auto",    "direction": "event" },
+              { "name": "fan_speed_low",     "direction": "event" },
+              { "name": "fan_speed_med",     "direction": "event" },
+              { "name": "fan_speed_high",    "direction": "event" },
+              { "name": "fan_speed_auto_fb", "direction": "state" },
+              { "name": "fan_speed_low_fb",  "direction": "state" },
+              { "name": "fan_speed_med_fb",  "direction": "state" },
+              { "name": "fan_speed_high_fb", "direction": "state" },
+              { "name": "setpoint_up",       "direction": "event" },
+              { "name": "setpoint_down",     "direction": "event" }
+            ],
+            "Number": [
+              { "name": "setpoint_cool",    "direction": "event" },
+              { "name": "setpoint_heat",    "direction": "event" },
+              { "name": "setpoint_cool_fb", "direction": "state" },
+              { "name": "setpoint_heat_fb", "direction": "state" },
+              { "name": "current_temp_fb",  "direction": "state" },
+              { "name": "humidity_fb",      "direction": "state" }
+            ],
+            "String": [
+              { "name": "hvac_status_fb", "direction": "state" }
+            ]
+          }
+        },
+        "AudioVideo": {
+          "contract": {
+            "Boolean": [
+              { "name": "av_power_on",   "direction": "event" },
+              { "name": "av_power_off",  "direction": "event" },
+              { "name": "av_power_fb",   "direction": "state" },
+              { "name": "source_tv",     "direction": "event" },
+              { "name": "source_cable",  "direction": "event" },
+              { "name": "source_appletv","direction": "event" },
+              { "name": "source_bluray", "direction": "event" },
+              { "name": "source_radio",  "direction": "event" },
+              { "name": "source_aux",    "direction": "event" },
+              { "name": "source_tv_fb",     "direction": "state" },
+              { "name": "source_cable_fb",  "direction": "state" },
+              { "name": "source_appletv_fb","direction": "state" },
+              { "name": "source_bluray_fb", "direction": "state" },
+              { "name": "source_radio_fb",  "direction": "state" },
+              { "name": "source_aux_fb",    "direction": "state" },
+              { "name": "vol_mute",      "direction": "event" },
+              { "name": "vol_mute_fb",   "direction": "state" },
+              { "name": "vol_up",        "direction": "event" },
+              { "name": "vol_down",      "direction": "event" },
+              { "name": "transport_play","direction": "event" },
+              { "name": "transport_pause","direction":"event" },
+              { "name": "transport_stop","direction": "event" },
+              { "name": "transport_next","direction": "event" },
+              { "name": "transport_prev","direction": "event" },
+              { "name": "transport_playing_fb","direction":"state" }
+            ],
+            "Number": [
+              { "name": "volume_level",    "direction": "event" },
+              { "name": "volume_level_fb", "direction": "state" }
+            ],
+            "String": [
+              { "name": "now_playing_fb",  "direction": "state" },
+              { "name": "source_name_fb",  "direction": "state" }
+            ]
+          }
+        },
+        "Shades": {
+          "contract": {
+            "Boolean": [
+              { "name": "shade1_open",   "direction": "event" },
+              { "name": "shade1_close",  "direction": "event" },
+              { "name": "shade1_stop",   "direction": "event" },
+              { "name": "shade2_open",   "direction": "event" },
+              { "name": "shade2_close",  "direction": "event" },
+              { "name": "shade2_stop",   "direction": "event" },
+              { "name": "shade3_open",   "direction": "event" },
+              { "name": "shade3_close",  "direction": "event" },
+              { "name": "shade3_stop",   "direction": "event" },
+              { "name": "shade4_open",   "direction": "event" },
+              { "name": "shade4_close",  "direction": "event" },
+              { "name": "shade4_stop",   "direction": "event" },
+              { "name": "shades_preset_open",     "direction": "event" },
+              { "name": "shades_preset_privacy",  "direction": "event" },
+              { "name": "shades_preset_blackout", "direction": "event" },
+              { "name": "shades_preset_close",    "direction": "event" }
+            ],
+            "Number": [
+              { "name": "shade1_position",    "direction": "event" },
+              { "name": "shade2_position",    "direction": "event" },
+              { "name": "shade3_position",    "direction": "event" },
+              { "name": "shade4_position",    "direction": "event" },
+              { "name": "shade1_position_fb", "direction": "state" },
+              { "name": "shade2_position_fb", "direction": "state" },
+              { "name": "shade3_position_fb", "direction": "state" },
+              { "name": "shade4_position_fb", "direction": "state" }
+            ]
+          }
+        }
+      }
+    }
+  }
+}

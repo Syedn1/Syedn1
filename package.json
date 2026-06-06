@@ -1,0 +1,24 @@
+{
+  "name": "crestron-ts770-ipad-ui",
+  "version": "1.0.0",
+  "description": "Crestron CH5 User Interface for TS770 Touch Panel and iPad",
+  "private": true,
+  "scripts": {
+    "dev": "vite --port 5173",
+    "build": "vite build",
+    "preview": "vite preview",
+    "archive": "ch5-cli archive -p ./dist -d ./output/crestron-ts770.ch5",
+    "deploy:panel": "ch5-cli deploy --config project.json",
+    "deploy:webxpanel": "ch5-cli webxpanel-deploy --config project.json"
+  },
+  "dependencies": {
+    "@crestron/ch5-components": "^3.4.0",
+    "@crestron/ch5-crcomlib": "^3.4.0",
+    "@crestron/ch5-webxpanel": "^3.4.0",
+    "@crestron/ch5-theme": "^3.4.0"
+  },
+  "devDependencies": {
+    "@crestron/ch5-cli": "^3.4.0",
+    "vite": "^5.2.0"
+  }
+}
