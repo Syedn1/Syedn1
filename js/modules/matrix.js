@@ -1,64 +1,36 @@
 /**
- * Matrix Module – Crestron 4×4 HDMI Matrix Switcher
- * Outputs: Display 1, Display 2
- * Inputs:  1=Blu-ray  2=Laptop1  3=Laptop2  4=PC  5=Wireless1  6=Wireless2
+ * Matrix Module – Crestron HD-MD-8×8-4K-E
+ * Protocol: Ethernet / CIP (Crestron IP)
+ * RS-232 fallback: CL{out}I{in}!
+ *
+ * Also handles: Crestron HD-MD-8×8 routing table signals
+ * Digital Joins: MATRIX_MIRROR=30, MATRIX_INDEP=31, MATRIX_EXTEND=32
+ * Serial Join:   MATRIX_CMD=1
  */
-(function attachMatrixModule(S) {
+(function(S) {
   'use strict';
 
-  function routeMatrix(output, input) {
-    if (!S._state.systemOn) { S._toast('System is OFF'); return; }
-
-    const prev = S._state.matrix[output];
-    S._state.matrix[output] = input;
-
-    // Update display preview label
-    const label = document.getElementById(`disp${output}-input-label`);
-    if (label) {
-      label.textContent = input ? `INPUT: ${S.SOURCE_NAMES[input]}` : '— NO SIGNAL —';
-    }
-
-    // Update display source state
-    if (S._state.displays[output]) {
-      S._state.displays[output].source = input;
-    }
-
-    // Highlight active input button
-    _refreshInputBtns(output, input);
-
-    // Update matrix grid cells
-    _refreshMatrixGrid(output, prev, input);
-
-    // Emit serial command (simulated RS-232 to matrix)
-    const cmd = `CL${output}I${input}!`;   // e.g. CL1I2!
-    S._setS(`matrix_cmd`, cmd);
-    S._setS('matrix_status', `OUT${output}→IN${input}`);
-
-    // Audio Follow Video
-    if (S._state.afvEnabled) {
-      S._setA(`audio_follow_out${output}`, input);
-    }
-
-    S._toast(`Matrix: OUT ${output} → ${S.SOURCE_NAMES[input]}`);
+  // HD-MD-8×8 TCP command builder
+  // Format used by Crestron IP driver:  route output X to input Y
+  function _routeCmd(output, input) {
+    return `ROUTE ${output} ${input}`;
   }
 
-  function _refreshInputBtns(output, activeInput) {
-    for (let i = 1; i <= 6; i++) {
-      const btn = document.getElementById(`d${output}-src${i}`);
-      if (btn) btn.classList.toggle('active', i === activeInput);
-    }
+  function routeOutput(output, input) {
+    S.setS(S.SJ.MATRIX_CMD, _routeCmd(output, input));
+    // Also send RS-232 fallback
+    S.setS(S.SJ.MATRIX_CMD, `CL${output}I${input}!`);
   }
 
-  function _refreshMatrixGrid(output, prev, curr) {
-    if (prev) {
-      const prevCell = document.getElementById(`mx-${output}-${prev}`);
-      if (prevCell) prevCell.classList.remove('active');
-    }
-    if (curr) {
-      const newCell = document.getElementById(`mx-${output}-${curr}`);
-      if (newCell) newCell.classList.add('active');
-    }
+  // Called when matrix mode select changes (from display.js)
+  // This module exposes the routing table for cross-reference
+  const routingTable = { 1: 0, 2: 0 };  // output → input
+
+  function applyRoute(output, input) {
+    routingTable[output] = input;
+    routeOutput(output, input);
   }
 
-  S.routeMatrix = routeMatrix;
+  // Expose for use by display module mirror logic
+  S._matrix = { applyRoute, routingTable };
 })(SIMPL);

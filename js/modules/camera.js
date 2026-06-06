@@ -1,142 +1,201 @@
 /**
- * Camera Module – AVPTZ Camera 1 (VISCA/IP) & NKU Camera 2 (VISCA/IP)
- * Handles: PTZ movement, zoom, preset recall/save, camera switching
+ * Camera Module – AVER CAM570 PTZ (×2)
+ * Protocol: VISCA over IP (UDP port 52381) + HTTP REST API
+ *
+ * VISCA commands built as hex strings (logged to console/S-join)
+ * Auto-tracking via AVER AI HTTP API
+ *
+ * Digital Joins: CAM1_SELECT=40, CAM2_SELECT=41,
+ *   CAM_AUTO_TRACK=42, CAM_PAN_L=43..ZOOM_OUT=48,
+ *   CAM_FOCUS_FAR=49, CAM_FOCUS_NEAR=50,
+ *   CAM_PRESET_1=51..PRESET_4=54, CAM_PRESET_SAVE=55
+ * Analog Joins: CAM_SPEED=6, CAM_PAN_FB=7, CAM_TILT_FB=8, CAM_ZOOM_FB=9
+ * Serial Join:  PTZ_VISCA_CMD=2, CAM_PRESET_CMD=5
  */
-(function attachCameraModule(S) {
+(function(S) {
   'use strict';
 
-  // Simulated camera positions (pan, tilt, zoom 0-100)
-  const cameras = {
-    1: { pan: 50, tilt: 50, zoom: 30, name: 'AVPTZ – Camera 1' },
-    2: { pan: 50, tilt: 50, zoom: 30, name: 'NKU – Camera 2' },
+  const st = S.state;
+
+  // VISCA command builder helpers (simplified)
+  const VISCA = {
+    header:      '81 01',
+    panTiltStop: '81 01 06 01 VV WW 03 03 FF',
+    panLeft:     '81 01 06 01 VV WW 01 03 FF',
+    panRight:    '81 01 06 01 VV WW 02 03 FF',
+    tiltUp:      '81 01 06 01 VV WW 03 01 FF',
+    tiltDown:    '81 01 06 01 VV WW 03 02 FF',
+    zoomIn:      '81 01 04 07 2V FF',
+    zoomOut:     '81 01 04 07 3V FF',
+    zoomStop:    '81 01 04 07 00 FF',
+    focusFar:    '81 01 04 08 2V FF',
+    focusNear:   '81 01 04 08 3V FF',
+    focusStop:   '81 01 04 08 00 FF',
+    presetRecall:'81 01 04 3F 02 PP FF',
+    presetSave:  '81 01 04 3F 01 PP FF',
+    trackOn:     'HTTP POST /api/v1/camera/tracking { "enabled": true }',
+    trackOff:    'HTTP POST /api/v1/camera/tracking { "enabled": false }',
   };
 
-  const presets = {
-    1: { 1: null, 2: null, 3: null, 4: null, 5: null, 6: null },
-    2: { 1: null, 2: null, 3: null, 4: null, 5: null, 6: null },
-  };
-  const PRESET_LABELS = { 1:'Wide Shot', 2:'Chairman', 3:'Presenter', 4:'Table Left', 5:'Table Right', 6:'Screen View' };
-
-  let moveInterval = null;
-  const SPEED = 4;   // degrees per tick
-
-  function selectCamera(camNum) {
-    S._state.activeCamera = camNum;
-    S._setD(`cam${camNum}_selected`, true);
-    S._setD('cam_active', true);
-
-    document.querySelectorAll('.cam-sel-btn').forEach((b, i) =>
-      b.classList.toggle('active', i + 1 === camNum)
-    );
-    const lbl = document.getElementById('cam-label');
-    if (lbl) lbl.textContent = cameras[camNum].name;
-    _updateViewport(camNum);
-    S._toast(`Camera ${camNum} selected`);
+  function _visca(template, speed, preset) {
+    const v = (speed||st.camSpeed).toString(16).toUpperCase();
+    const w = v;
+    const p = preset !== undefined ? preset.toString(16).toUpperCase().padStart(2,'0') : '00';
+    return template.replace(/VV/g,v).replace(/WW/g,w).replace('PP',p).replace(/\bV\b/g,v);
   }
 
-  function ptzMove(dir, speed) {
-    const cam = cameras[S._state.activeCamera];
-    const ind = document.getElementById('cam-ptz-ind');
-    clearInterval(moveInterval);
+  function _sendVisca(cmd) {
+    S.setS(S.SJ.PTZ_VISCA_CMD, cmd);
+    console.log(`[SIMPL VISCA CAM${st.activeCam}] ${cmd}`);
+  }
 
-    const dirs = { up:'tilt+', down:'tilt-', left:'pan-', right:'pan+' };
-    S._setD(`ptz_${dirs[dir]}`, true);
+  function _updatePtzStatus() {
+    const pos = st.camPos[st.activeCam];
+    const el  = document.getElementById('cam-ptz-status');
+    if (el) el.textContent=`P:${pos.p} T:${pos.t} Z:${pos.z}`;
+    S.setA(S.AJ.CAM_PAN_FB,  Math.round(pos.p*655.35));
+    S.setA(S.AJ.CAM_TILT_FB, Math.round(pos.t*655.35));
+    S.setA(S.AJ.CAM_ZOOM_FB, Math.round(pos.z*655.35));
+  }
 
-    moveInterval = setInterval(() => {
-      if (dir === 'up')    cam.tilt = Math.min(100, cam.tilt + SPEED);
-      if (dir === 'down')  cam.tilt = Math.max(0,   cam.tilt - SPEED);
-      if (dir === 'left')  cam.pan  = Math.max(0,   cam.pan  - SPEED);
-      if (dir === 'right') cam.pan  = Math.min(100, cam.pan  + SPEED);
-      if (ind) ind.textContent = `P:${cam.pan}° T:${cam.tilt}°`;
-    }, 80);
+  // ── Camera Selection ────────────────────────────────────
+  function selectCam(num, btn) {
+    st.activeCam = num;
+    S.setD(S.DJ.CAM1_SELECT, num===1);
+    S.setD(S.DJ.CAM2_SELECT, num===2);
+
+    document.querySelectorAll('.cam-tab').forEach(b=>b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+
+    const badge = document.getElementById('cam-name-badge');
+    if (badge) badge.textContent=`Camera ${num} · ${num===1?'Left Wall':'Right Wall'}`;
+
+    const vcLbl = document.getElementById('vc-cam-label');
+    if (vcLbl) vcLbl.textContent=`Camera ${num} Feed — AVER CAM570`;
+    const vcBadge = document.getElementById('vc-cam-badge');
+    if (vcBadge) vcBadge.textContent=`AVER CAM570 Cam${num} · Active`;
+
+    _updatePtzStatus();
+    S.toast(`Camera ${num} selected`);
+  }
+
+  // ── PTZ Movement ────────────────────────────────────────
+  const STEP = 3;
+
+  function ptzStart(dir) {
+    S.setD({ up:S.DJ.CAM_TILT_U, down:S.DJ.CAM_TILT_D, left:S.DJ.CAM_PAN_L, right:S.DJ.CAM_PAN_R }[dir], true);
+    const cmdMap = { up:'tiltUp', down:'tiltDown', left:'panLeft', right:'panRight' };
+    _sendVisca(_visca(VISCA[cmdMap[dir]]));
+
+    clearInterval(st.ptzInterval);
+    st.ptzInterval = setInterval(() => {
+      const pos = st.camPos[st.activeCam];
+      if (dir==='up')    pos.t=Math.min(100,pos.t+STEP);
+      if (dir==='down')  pos.t=Math.max(0,  pos.t-STEP);
+      if (dir==='left')  pos.p=Math.max(0,  pos.p-STEP);
+      if (dir==='right') pos.p=Math.min(100,pos.p+STEP);
+      _updatePtzStatus();
+    },80);
   }
 
   function ptzStop() {
-    clearInterval(moveInterval);
-    ['tilt+', 'tilt-', 'pan-', 'pan+', 'zoom+', 'zoom-'].forEach(d =>
-      S._setD(`ptz_${d}`, false)
-    );
-    const cam = cameras[S._state.activeCamera];
-    const ind = document.getElementById('cam-ptz-ind');
-    if (ind) ind.textContent = 'PTZ READY';
-    S._setA('ptz_pan',  cam.pan);
-    S._setA('ptz_tilt', cam.tilt);
-    S._setA('ptz_zoom', cam.zoom);
+    clearInterval(st.ptzInterval);
+    [S.DJ.CAM_TILT_U,S.DJ.CAM_TILT_D,S.DJ.CAM_PAN_L,S.DJ.CAM_PAN_R,
+     S.DJ.CAM_ZOOM_IN,S.DJ.CAM_ZOOM_OUT,S.DJ.CAM_FOCUS_FAR,S.DJ.CAM_FOCUS_NEAR]
+      .forEach(j=>S.setD(j,false));
+    _sendVisca(_visca(VISCA.panTiltStop));
+    _sendVisca(_visca(VISCA.zoomStop));
   }
 
-  function ptzZoom(dir) {
-    const cam = cameras[S._state.activeCamera];
-    clearInterval(moveInterval);
-    S._setD(`ptz_zoom${dir === 'in' ? '+' : '-'}`, true);
-
-    moveInterval = setInterval(() => {
-      if (dir === 'in')  cam.zoom = Math.min(100, cam.zoom + SPEED);
-      if (dir === 'out') cam.zoom = Math.max(0,   cam.zoom - SPEED);
-      const ind = document.getElementById('cam-ptz-ind');
-      if (ind) ind.textContent = `ZOOM: ${cam.zoom}%`;
-    }, 80);
+  function ptzZoomStart(dir) {
+    S.setD(dir==='in'?S.DJ.CAM_ZOOM_IN:S.DJ.CAM_ZOOM_OUT, true);
+    _sendVisca(_visca(dir==='in'?VISCA.zoomIn:VISCA.zoomOut));
+    clearInterval(st.ptzInterval);
+    st.ptzInterval = setInterval(()=>{
+      const pos=st.camPos[st.activeCam];
+      if(dir==='in')  pos.z=Math.min(100,pos.z+STEP);
+      if(dir==='out') pos.z=Math.max(0,  pos.z-STEP);
+      _updatePtzStatus();
+    },80);
   }
 
-  function recallPreset(num) {
-    const camNum = S._state.activeCamera;
-    const saved  = presets[camNum][num];
+  function ptzFocusStart(dir) {
+    S.setD(dir==='far'?S.DJ.CAM_FOCUS_FAR:S.DJ.CAM_FOCUS_NEAR, true);
+    _sendVisca(_visca(dir==='far'?VISCA.focusFar:VISCA.focusNear));
+    clearInterval(st.ptzInterval);
+    st.ptzInterval = setInterval(()=>{ /* focus tracking */ },80);
+  }
 
+  // ── Presets ─────────────────────────────────────────────
+  function recallPreset(btn) {
+    const num = parseInt(btn.dataset.preset,10);
+    if (!num) return;
+
+    const saved = st.camPresets[st.activeCam][num];
     if (saved) {
-      cameras[camNum].pan  = saved.pan;
-      cameras[camNum].tilt = saved.tilt;
-      cameras[camNum].zoom = saved.zoom;
+      st.camPos[st.activeCam] = { ...saved };
+      _updatePtzStatus();
     }
-    // Build VISCA preset recall command byte sequence (simulated)
-    const visca = `FF 01 04 3F 02 ${num.toString(16).padStart(2,'0')} FF`;
-    S._setS(`ptz_preset_cmd`, visca);
-    S._setD(`ptz_preset_${num}`, true);
-    setTimeout(() => S._setD(`ptz_preset_${num}`, false), 300);
 
-    document.querySelectorAll('.preset-btn')
-      .forEach((b, i) => b.classList.toggle('active', i + 1 === num));
-    setTimeout(() =>
-      document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'))
-    , 600);
+    S.setD(S.DJ['CAM_PRESET_'+num], true);
+    setTimeout(()=>S.setD(S.DJ['CAM_PRESET_'+num], false), 300);
+    S.setS(S.SJ.CAM_PRESET_CMD, _visca(VISCA.presetRecall, null, num));
+    _sendVisca(_visca(VISCA.presetRecall, null, num));
 
-    S._toast(`Preset ${num}: ${PRESET_LABELS[num]}`);
+    document.querySelectorAll('#cam-presets .preset-btn[data-preset]')
+      .forEach(b=>b.classList.toggle('active', parseInt(b.dataset.preset,10)===num));
+
+    S.toast(`Preset ${num} recalled`);
   }
 
-  function savePreset() {
-    const sel    = document.getElementById('preset-save-sel');
-    const num    = parseInt(sel.value, 10);
-    const camNum = S._state.activeCamera;
-    const cam    = cameras[camNum];
-
-    presets[camNum][num] = { pan: cam.pan, tilt: cam.tilt, zoom: cam.zoom };
-
-    const visca = `FF 01 04 3F 01 ${num.toString(16).padStart(2,'0')} FF`;
-    S._setS('ptz_preset_save_cmd', visca);
-    S._toast(`Saved preset ${num}: ${PRESET_LABELS[num]} (Cam ${camNum})`);
+  function saveCurrentPreset() {
+    const pos = { ...st.camPos[st.activeCam] };
+    // Save to next empty slot
+    const slots = st.camPresets[st.activeCam];
+    for (let i=1;i<=4;i++) {
+      if (!slots[i]) { slots[i]=pos; S.toast(`Position saved to Preset ${i}`); return; }
+    }
+    slots[1]=pos;  // overwrite slot 1 if all full
+    S.setD(S.DJ.CAM_PRESET_SAVE, true);
+    setTimeout(()=>S.setD(S.DJ.CAM_PRESET_SAVE,false), 300);
+    S.toast('Preset 1 overwritten with current position');
   }
 
-  function _updateViewport(camNum) {
-    const vp = document.getElementById('cam-viewport');
-    if (!vp) return;
-    vp.style.border = camNum === 1
-      ? '1px solid #1f6feb'
-      : '1px solid #238636';
+  // ── Auto Tracking ────────────────────────────────────────
+  function toggleTracking() {
+    st.camTrack=!st.camTrack;
+    S.setD(S.DJ.CAM_AUTO_TRACK, st.camTrack);
+    const sw=document.getElementById('tracking-switch');
+    if(sw) sw.classList.toggle('off', !st.camTrack);
+    _sendVisca(st.camTrack ? VISCA.trackOn : VISCA.trackOff);
+    S.toast(`Auto Track: ${st.camTrack?'ON':'OFF'}`);
   }
 
-  // Conference camera selection
-  function confSelectCamera(num) {
-    S._state.confActiveCamera = num;
-    document.querySelectorAll('.cam-conf-btn').forEach((b, i) =>
-      b.classList.toggle('active', i + 1 === num)
-    );
-    selectCamera(num);
-    S._toast(`Teams camera: Cam ${num}`);
+  // ── Speed ────────────────────────────────────────────────
+  function setPtzSpeed(btn) {
+    const speed=parseInt(btn.dataset.speed,10);
+    st.camSpeed=speed;
+    S.setA(S.AJ.CAM_SPEED, speed*7281);
+    document.querySelectorAll('#speed-btns .preset-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    S.toast(`PTZ speed: ${btn.textContent.trim()}`);
   }
 
-  S.selectCamera    = selectCamera;
-  S.ptzMove         = ptzMove;
-  S.ptzStop         = ptzStop;
-  S.ptzZoom         = ptzZoom;
-  S.recallPreset    = recallPreset;
-  S.savePreset      = savePreset;
-  S.confSelectCamera = confSelectCamera;
+  // ── Camera output routing ─────────────────────────────────
+  function setCamOutput(val) {
+    S.setS(S.SJ.MATRIX_CMD, `CAM_OUT ${val}`);
+    S.toast(`Camera routing: ${document.getElementById('cam-output-sel').options[document.getElementById('cam-output-sel').selectedIndex].text}`);
+  }
+
+  // Attach globals
+  window.selectCam         = selectCam;
+  window.ptzStart          = ptzStart;
+  window.ptzStop           = ptzStop;
+  window.ptzZoomStart      = ptzZoomStart;
+  window.ptzFocusStart     = ptzFocusStart;
+  window.recallPreset      = recallPreset;
+  window.saveCurrentPreset = saveCurrentPreset;
+  window.toggleTracking    = toggleTracking;
+  window.setPtzSpeed       = setPtzSpeed;
+  window.setCamOutput      = setCamOutput;
 })(SIMPL);

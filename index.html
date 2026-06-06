@@ -1,424 +1,1504 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AMO Boardroom Control</title>
-  <link rel="stylesheet" href="css/styles.css" />
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280, initial-scale=1.0">
+<title>ASMO Boardroom Control Panel</title>
+<style>
+  :root {
+    --bg: #0d0f14;
+    --surface: #161b25;
+    --surface2: #1e2535;
+    --surface3: #252e42;
+    --accent: #0076ff;
+    --accent2: #00c2ff;
+    --accent-glow: rgba(0,118,255,0.25);
+    --green: #00d68f;
+    --green-dim: rgba(0,214,143,0.15);
+    --red: #ff3d5a;
+    --red-dim: rgba(255,61,90,0.15);
+    --orange: #ff9500;
+    --orange-dim: rgba(255,149,0,0.15);
+    --text: #e8ecf5;
+    --text-dim: #7b8aab;
+    --text-muted: #3d4d6b;
+    --border: rgba(255,255,255,0.07);
+    --radius: 14px;
+    --radius-sm: 8px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, 'SF Pro Display', 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    width: 1280px;
+    height: 800px;
+    overflow: hidden;
+    user-select: none;
+  }
+
+  /* ── TOPBAR ── */
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 64px;
+    padding: 0 32px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .topbar-logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .logo-mark {
+    width: 36px; height: 36px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: 14px; letter-spacing: -0.5px;
+  }
+
+  .logo-text { font-size: 16px; font-weight: 700; letter-spacing: 0.5px; }
+  .logo-sub  { font-size: 11px; color: var(--text-dim); letter-spacing: 1px; text-transform: uppercase; }
+
+  .topbar-center {
+    display: flex; gap: 6px;
+  }
+
+  .nav-btn {
+    padding: 8px 18px;
+    border: none;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.18s;
+    letter-spacing: 0.3px;
+    display: flex; align-items: center; gap: 7px;
+  }
+  .nav-btn:hover { background: var(--surface2); color: var(--text); }
+  .nav-btn.active {
+    background: var(--accent);
+    color: #fff;
+    box-shadow: 0 0 18px var(--accent-glow);
+  }
+  .nav-btn svg { flex-shrink: 0; }
+
+  .topbar-right {
+    display: flex; align-items: center; gap: 16px;
+  }
+
+  .status-pill {
+    display: flex; align-items: center; gap: 7px;
+    padding: 6px 14px;
+    border: 1px solid rgba(0,214,143,0.25);
+    border-radius: 20px;
+    font-size: 12px; font-weight: 600;
+    transition: all 0.3s;
+  }
+  .status-pill.online  { background: var(--green-dim); color: var(--green); border-color: rgba(0,214,143,0.25); }
+  .status-pill.offline { background: var(--red-dim);   color: var(--red);   border-color: rgba(255,61,90,0.25); }
+  .status-pill.standby { background: var(--orange-dim);color: var(--orange);border-color: rgba(255,149,0,0.25); }
+
+  .status-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; animation: pulse 2s infinite; }
+
+  @keyframes pulse {
+    0%,100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  .clock { font-size: 14px; font-weight: 600; color: var(--text-dim); }
+
+  /* ── PAGES ── */
+  .page { display: none; width: 1280px; height: 736px; }
+  .page.active { display: flex; }
+
+  /* ══════════════════════════════
+     HOME PAGE
+  ══════════════════════════════ */
+  #page-home {
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: radial-gradient(ellipse at 40% 50%, rgba(0,118,255,0.08) 0%, transparent 60%),
+                radial-gradient(ellipse at 80% 30%, rgba(0,194,255,0.06) 0%, transparent 50%),
+                var(--bg);
+    gap: 48px;
+  }
+
+  .home-header { text-align: center; }
+  .home-title { font-size: 40px; font-weight: 800; letter-spacing: -1px; background: linear-gradient(135deg,#fff 30%,var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  .home-sub { font-size: 15px; color: var(--text-dim); margin-top: 8px; letter-spacing: 0.5px; }
+
+  .home-cards {
+    display: grid;
+    grid-template-columns: repeat(4, 220px);
+    gap: 20px;
+  }
+
+  .home-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 32px 24px;
+    display: flex; flex-direction: column; align-items: center; gap: 16px;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+  .home-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    border-radius: 20px 20px 0 0;
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+  .home-card:hover { transform: translateY(-4px); background: var(--surface2); border-color: rgba(255,255,255,0.12); }
+  .home-card:hover::before { opacity: 1; }
+
+  .home-card.c-blue::before  { background: linear-gradient(90deg, var(--accent), var(--accent2)); }
+  .home-card.c-green::before { background: linear-gradient(90deg, var(--green), #00f5b8); }
+  .home-card.c-orange::before{ background: linear-gradient(90deg, var(--orange), #ffcc00); }
+  .home-card.c-purple::before{ background: linear-gradient(90deg, #a259ff, #df6cff); }
+
+  .home-card-icon {
+    width: 64px; height: 64px; border-radius: 18px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 28px;
+  }
+  .c-blue .home-card-icon  { background: rgba(0,118,255,0.15); }
+  .c-green .home-card-icon { background: rgba(0,214,143,0.15); }
+  .c-orange .home-card-icon{ background: rgba(255,149,0,0.15); }
+  .c-purple .home-card-icon{ background: rgba(162,89,255,0.15); }
+
+  .home-card-label { font-size: 15px; font-weight: 700; }
+  .home-card-desc  { font-size: 12px; color: var(--text-dim); text-align: center; line-height: 1.5; }
+
+  .poweroff-btn {
+    display: flex; align-items: center; gap: 10px;
+    padding: 14px 36px;
+    background: var(--red-dim);
+    border: 1px solid rgba(255,61,90,0.3);
+    border-radius: 14px;
+    color: var(--red);
+    font-size: 15px; font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .poweroff-btn:hover { background: rgba(255,61,90,0.25); transform: scale(1.02); }
+
+  /* ══════════════════════════════
+     DISPLAY PAGE
+  ══════════════════════════════ */
+  #page-display {
+    flex-direction: column;
+    padding: 28px 32px;
+    gap: 24px;
+  }
+
+  .page-title {
+    font-size: 20px; font-weight: 800; letter-spacing: -0.3px;
+  }
+  .page-title span { color: var(--accent2); }
+
+  .display-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    flex: 1;
+  }
+
+  .display-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+    display: flex; flex-direction: column; gap: 18px;
+  }
+
+  .panel-header {
+    display: flex; align-items: center; justify-content: space-between;
+  }
+
+  .panel-title { font-size: 14px; font-weight: 700; letter-spacing: 0.3px; }
+  .panel-badge {
+    padding: 4px 10px; border-radius: 20px;
+    font-size: 11px; font-weight: 700; letter-spacing: 0.5px;
+    transition: all 0.2s;
+  }
+  .badge-on  { background: var(--green-dim); color: var(--green); border: 1px solid rgba(0,214,143,0.3); }
+  .badge-off { background: var(--red-dim);   color: var(--red);   border: 1px solid rgba(255,61,90,0.3); }
+
+  .display-preview {
+    background: #080a0f;
+    border-radius: 10px;
+    aspect-ratio: 16/9;
+    display: flex; align-items: center; justify-content: center;
+    border: 1px solid var(--border);
+    position: relative;
+    overflow: hidden;
+    font-size: 12px; color: var(--text-muted);
+    transition: border-color 0.3s;
+  }
+  .display-preview.has-signal { border-color: rgba(0,118,255,0.4); }
+  .display-preview.has-signal::after {
+    content: '';
+    position: absolute; inset: 0;
+    background: linear-gradient(135deg, rgba(0,118,255,0.05), transparent);
+  }
+  .display-preview-label { font-size: 12px; color: var(--text-muted); }
+
+  .source-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+  }
+
+  .source-btn {
+    padding: 10px 8px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-dim);
+    font-size: 12px; font-weight: 600;
+    cursor: pointer; transition: all 0.18s;
+    text-align: center;
+    display: flex; flex-direction: column; align-items: center; gap: 5px;
+  }
+  .source-btn:hover { border-color: var(--accent); color: var(--text); }
+  .source-btn.active {
+    background: var(--accent-glow);
+    border-color: var(--accent);
+    color: #fff;
+  }
+  .source-btn .src-icon { font-size: 18px; }
+  .source-btn .src-label { font-size: 10px; letter-spacing: 0.3px; }
+
+  .power-row { display: flex; gap: 10px; }
+
+  .btn-power-on {
+    flex: 1; padding: 11px;
+    background: var(--green-dim);
+    border: 1px solid rgba(0,214,143,0.3);
+    border-radius: var(--radius-sm);
+    color: var(--green); font-weight: 700; font-size: 13px;
+    cursor: pointer; transition: all 0.18s;
+  }
+  .btn-power-on:hover { background: rgba(0,214,143,0.25); }
+
+  .btn-power-off {
+    flex: 1; padding: 11px;
+    background: var(--red-dim);
+    border: 1px solid rgba(255,61,90,0.3);
+    border-radius: var(--radius-sm);
+    color: var(--red); font-weight: 700; font-size: 13px;
+    cursor: pointer; transition: all 0.18s;
+  }
+  .btn-power-off:hover { background: rgba(255,61,90,0.25); }
+
+  .display-bottom {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 18px 24px;
+    display: flex; align-items: center; gap: 24px;
+  }
+
+  .all-displays-label { font-size: 13px; font-weight: 700; color: var(--text-dim); white-space: nowrap; }
+
+  .btn-all-on {
+    padding: 10px 24px;
+    background: var(--green-dim);
+    border: 1px solid rgba(0,214,143,0.3);
+    border-radius: var(--radius-sm);
+    color: var(--green); font-weight: 700; font-size: 13px;
+    cursor: pointer; transition: all 0.18s;
+  }
+  .btn-all-on:hover { background: rgba(0,214,143,0.25); }
+
+  .btn-all-off {
+    padding: 10px 24px;
+    background: var(--red-dim);
+    border: 1px solid rgba(255,61,90,0.3);
+    border-radius: var(--radius-sm);
+    color: var(--red); font-weight: 700; font-size: 13px;
+    cursor: pointer; transition: all 0.18s;
+  }
+  .btn-all-off:hover { background: rgba(255,61,90,0.25); }
+
+  .divider-v { width: 1px; height: 32px; background: var(--border); }
+
+  .matrix-label { font-size: 13px; font-weight: 700; color: var(--text-dim); }
+  .matrix-select {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text);
+    padding: 8px 12px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .matrix-select:focus { outline: none; border-color: var(--accent); }
+
+  /* ══════════════════════════════
+     CAMERA PAGE
+  ══════════════════════════════ */
+  #page-camera {
+    flex-direction: column;
+    padding: 28px 32px;
+    gap: 20px;
+  }
+
+  .camera-layout {
+    display: grid;
+    grid-template-columns: 1fr 340px;
+    gap: 20px;
+    flex: 1;
+  }
+
+  .cam-preview-area {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    display: flex; flex-direction: column; gap: 16px;
+  }
+
+  .cam-select-row {
+    display: flex; gap: 10px;
+  }
+
+  .cam-tab {
+    flex: 1; padding: 10px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-dim); font-size: 12px; font-weight: 700;
+    cursor: pointer; transition: all 0.18s; text-align: center;
+  }
+  .cam-tab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+  .cam-feed {
+    flex: 1;
+    background: #060810;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 12px;
+    position: relative;
+    min-height: 320px;
+  }
+  .cam-feed-icon { font-size: 48px; opacity: 0.3; }
+  .cam-feed-label { font-size: 13px; color: var(--text-muted); }
+
+  .cam-feed-badge {
+    position: absolute; top: 12px; left: 12px;
+    background: var(--red);
+    color: #fff; font-size: 11px; font-weight: 800;
+    padding: 4px 10px; border-radius: 6px;
+    letter-spacing: 1px;
+    animation: recblink 1.5s infinite;
+  }
+  @keyframes recblink { 0%,100%{opacity:1} 50%{opacity:0.6} }
+
+  .cam-name-badge {
+    position: absolute; bottom: 12px; left: 12px;
+    background: rgba(0,0,0,0.7);
+    color: #fff; font-size: 12px; font-weight: 600;
+    padding: 5px 12px; border-radius: 6px;
+  }
+
+  .cam-ptz-status {
+    position: absolute; bottom: 12px; right: 12px;
+    background: rgba(0,0,0,0.7);
+    color: var(--accent2); font-size: 11px; font-weight: 700;
+    padding: 5px 12px; border-radius: 6px;
+    font-family: monospace; letter-spacing: 0.5px;
+  }
+
+  .preset-row {
+    display: flex; gap: 8px;
+  }
+
+  .preset-btn {
+    flex: 1; padding: 9px 6px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-dim); font-size: 11px; font-weight: 700;
+    cursor: pointer; transition: all 0.18s; text-align: center;
+  }
+  .preset-btn:hover { border-color: var(--accent); color: var(--text); }
+  .preset-btn.active { background: var(--accent-glow); border-color: var(--accent); color: #fff; }
+
+  /* Controls sidebar */
+  .cam-controls {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    display: flex; flex-direction: column; gap: 20px;
+  }
+
+  .ctrl-section-title {
+    font-size: 11px; font-weight: 700; letter-spacing: 1px;
+    text-transform: uppercase; color: var(--text-dim);
+    margin-bottom: -8px;
+  }
+
+  .ptz-pad {
+    display: grid;
+    grid-template-columns: repeat(3, 60px);
+    grid-template-rows: repeat(3, 60px);
+    gap: 6px;
+    justify-content: center;
+  }
+
+  .ptz-btn {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; transition: all 0.15s;
+    font-size: 20px; color: var(--text-dim);
+    user-select: none;
+  }
+  .ptz-btn:hover { background: var(--accent); border-color: var(--accent); color: #fff; transform: scale(1.05); }
+  .ptz-btn:active { transform: scale(0.95); background: var(--accent); }
+  .ptz-btn.center {
+    background: var(--surface3);
+    font-size: 10px; font-weight: 700; letter-spacing: 0.5px; color: var(--text-dim);
+    cursor: default;
+  }
+  .ptz-btn.center:hover { background: var(--surface3); color: var(--text-dim); transform: none; }
+  .ptz-empty { visibility: hidden; }
+
+  .zoom-row {
+    display: flex; gap: 10px; align-items: center;
+  }
+  .zoom-label { font-size: 12px; color: var(--text-dim); font-weight: 600; width: 40px; }
+  .zoom-btn {
+    flex: 1; padding: 10px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text); font-size: 18px; font-weight: 600;
+    cursor: pointer; transition: all 0.18s; text-align: center;
+    user-select: none;
+  }
+  .zoom-btn:hover { background: var(--accent); border-color: var(--accent); }
+
+  .tracking-toggle {
+    display: flex; align-items: center; justify-content: space-between;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 12px 16px;
+    cursor: pointer;
+    transition: border-color 0.2s;
+  }
+  .tracking-toggle:hover { border-color: rgba(255,255,255,0.15); }
+  .tracking-toggle-label { font-size: 13px; font-weight: 600; }
+  .toggle-switch {
+    width: 44px; height: 24px;
+    background: var(--green);
+    border-radius: 12px;
+    position: relative;
+    cursor: pointer;
+    transition: background 0.2s;
+    flex-shrink: 0;
+  }
+  .toggle-switch.off { background: var(--surface3); }
+  .toggle-switch::after {
+    content: '';
+    position: absolute;
+    top: 3px; right: 3px;
+    width: 18px; height: 18px;
+    background: #fff;
+    border-radius: 50%;
+    transition: all 0.2s;
+  }
+  .toggle-switch.off::after { right: auto; left: 3px; }
+
+  /* ══════════════════════════════
+     AUDIO PAGE
+  ══════════════════════════════ */
+  #page-audio {
+    flex-direction: column;
+    padding: 28px 32px;
+    gap: 20px;
+  }
+
+  .audio-layout {
+    display: grid;
+    grid-template-columns: 1fr 1fr 280px;
+    gap: 20px;
+    flex: 1;
+  }
+
+  .audio-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    display: flex; flex-direction: column; gap: 16px;
+  }
+
+  .mic-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 16px;
+    display: flex; flex-direction: column; gap: 12px;
+  }
+
+  .mic-header {
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .mic-name { font-size: 13px; font-weight: 700; }
+  .mic-location { font-size: 11px; color: var(--text-dim); }
+
+  .mute-btn {
+    width: 80px; height: 36px;
+    border-radius: var(--radius-sm);
+    border: none;
+    font-size: 12px; font-weight: 700;
+    cursor: pointer; transition: all 0.18s;
+  }
+  .mute-btn.muted {
+    background: var(--red-dim);
+    color: var(--red);
+    border: 1px solid rgba(255,61,90,0.3);
+  }
+  .mute-btn.active-mic {
+    background: var(--green-dim);
+    color: var(--green);
+    border: 1px solid rgba(0,214,143,0.3);
+  }
+
+  .level-meter {
+    display: flex; gap: 3px; height: 20px; align-items: flex-end;
+  }
+  .level-bar {
+    flex: 1; border-radius: 2px;
+    background: var(--surface3);
+    transition: height 0.1s;
+  }
+  .level-bar.active { background: var(--green); }
+  .level-bar.warn   { background: var(--orange); }
+  .level-bar.peak   { background: var(--red); }
+
+  .vol-row { display: flex; align-items: center; gap: 12px; }
+  .vol-label { font-size: 12px; color: var(--text-dim); width: 60px; }
+  .vol-slider {
+    flex: 1;
+    -webkit-appearance: none;
+    height: 6px;
+    border-radius: 3px;
+    background: linear-gradient(to right, var(--accent) 70%, var(--surface3) 70%);
+    cursor: pointer;
+    outline: none;
+  }
+  .vol-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 0 8px rgba(0,118,255,0.5);
+    cursor: pointer;
+  }
+  .vol-value { font-size: 12px; font-weight: 700; color: var(--accent2); width: 36px; text-align: right; }
+
+  .master-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    display: flex; flex-direction: column; gap: 16px;
+    align-items: center;
+  }
+
+  .master-vol-wrap {
+    display: flex; flex-direction: column; align-items: center; gap: 12px;
+    flex: 1;
+  }
+
+  .master-vol-label { font-size: 11px; font-weight: 700; color: var(--text-dim); letter-spacing: 1px; text-transform: uppercase; }
+  .master-vol-num { font-size: 40px; font-weight: 800; color: var(--accent2); line-height: 1; }
+  .master-vol-unit { font-size: 13px; color: var(--text-dim); }
+
+  .vol-vertical {
+    -webkit-appearance: none;
+    writing-mode: vertical-lr;
+    direction: rtl;
+    width: 6px;
+    height: 200px;
+    border-radius: 3px;
+    background: linear-gradient(to top, var(--accent) 70%, var(--surface3) 70%);
+    cursor: pointer;
+    outline: none;
+  }
+  .vol-vertical::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 0 10px rgba(0,118,255,0.5);
+    cursor: pointer;
+  }
+
+  .all-mute-btn {
+    width: 100%;
+    padding: 13px;
+    background: var(--red-dim);
+    border: 1px solid rgba(255,61,90,0.3);
+    border-radius: var(--radius-sm);
+    color: var(--red); font-size: 13px; font-weight: 800;
+    cursor: pointer; transition: all 0.18s;
+    letter-spacing: 0.5px;
+  }
+  .all-mute-btn:hover { background: rgba(255,61,90,0.25); }
+  .all-mute-btn.muted { background: rgba(0,214,143,0.15); color: var(--green); border-color: rgba(0,214,143,0.3); }
+
+  .preset-audio-btn {
+    width: 100%;
+    padding: 11px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-dim); font-size: 12px; font-weight: 600;
+    cursor: pointer; transition: all 0.18s; text-align: center;
+  }
+  .preset-audio-btn:hover { border-color: var(--accent); color: var(--text); }
+  .preset-audio-btn.active { background: var(--accent-glow); border-color: var(--accent); color: #fff; }
+
+  .speaker-zone {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 14px 16px;
+    display: flex; align-items: center; gap: 12px;
+  }
+  .zone-icon { font-size: 22px; }
+  .zone-info { flex: 1; }
+  .zone-name  { font-size: 13px; font-weight: 700; }
+  .zone-desc  { font-size: 11px; color: var(--text-dim); }
+  .zone-toggle {
+    width: 40px; height: 22px;
+    background: var(--green);
+    border-radius: 11px;
+    position: relative;
+    cursor: pointer;
+    transition: background 0.2s;
+    flex-shrink: 0;
+  }
+  .zone-toggle.off { background: var(--surface3); }
+  .zone-toggle::after {
+    content: '';
+    position: absolute;
+    top: 2px; right: 2px;
+    width: 18px; height: 18px;
+    background: #fff; border-radius: 50%;
+    transition: all 0.2s;
+  }
+  .zone-toggle.off::after { right: auto; left: 2px; }
+
+  /* ══════════════════════════════
+     VIDEO CONFERENCING PAGE
+  ══════════════════════════════ */
+  #page-vc {
+    flex-direction: column;
+    padding: 28px 32px;
+    gap: 20px;
+  }
+
+  .vc-layout {
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    gap: 20px;
+    flex: 1;
+  }
+
+  .vc-main {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+    display: flex; flex-direction: column; gap: 20px;
+  }
+
+  .meeting-status-bar {
+    display: flex; align-items: center; justify-content: space-between;
+    background: var(--surface2);
+    border-radius: var(--radius-sm);
+    padding: 14px 18px;
+  }
+
+  .meeting-info { display: flex; flex-direction: column; gap: 4px; }
+  .meeting-name { font-size: 15px; font-weight: 800; }
+  .meeting-time { font-size: 12px; color: var(--text-dim); }
+
+  .meeting-timer {
+    font-size: 24px; font-weight: 800; font-variant-numeric: tabular-nums;
+    color: var(--accent2);
+    font-family: monospace;
+  }
+
+  .vc-preview {
+    flex: 1;
+    background: #050810;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    padding: 12px;
+    min-height: 0;
+  }
+
+  .vc-feed {
+    background: #0a0d18;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 10px; position: relative;
+  }
+  .vc-feed.main-feed {
+    grid-column: span 2;
+    min-height: 120px;
+  }
+  .vc-feed-avatar {
+    width: 50px; height: 50px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; font-weight: 800;
+  }
+  .vc-feed-name { font-size: 12px; font-weight: 600; color: var(--text-dim); }
+  .vc-feed-label {
+    position: absolute; bottom: 8px; left: 10px;
+    background: rgba(0,0,0,0.7);
+    font-size: 11px; font-weight: 600;
+    padding: 3px 8px; border-radius: 5px; color: #fff;
+  }
+  .vc-feed-icon { font-size: 40px; opacity: 0.2; }
+
+  .vc-controls-bar {
+    display: flex; gap: 12px; align-items: center; justify-content: center;
+  }
+
+  .vc-ctrl-btn {
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    padding: 12px 20px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-dim); font-size: 11px; font-weight: 700;
+    cursor: pointer; transition: all 0.18s; min-width: 80px;
+  }
+  .vc-ctrl-btn .icon { font-size: 22px; }
+  .vc-ctrl-btn:hover { background: var(--surface3); color: var(--text); }
+  .vc-ctrl-btn.active { background: var(--accent-glow); border-color: var(--accent); color: #fff; }
+  .vc-ctrl-btn.muted-state { background: var(--red-dim); border-color: rgba(255,61,90,0.4); color: var(--red); }
+
+  .end-call-btn {
+    padding: 12px 32px;
+    background: var(--red);
+    border: none;
+    border-radius: var(--radius-sm);
+    color: #fff; font-size: 14px; font-weight: 800;
+    cursor: pointer; transition: all 0.18s;
+    display: flex; align-items: center; gap: 8px;
+    min-width: 140px; justify-content: center;
+  }
+  .end-call-btn:hover { background: #ff1f40; transform: scale(1.02); }
+
+  .start-call-btn {
+    padding: 12px 32px;
+    background: var(--green);
+    border: none;
+    border-radius: var(--radius-sm);
+    color: #000; font-size: 14px; font-weight: 800;
+    cursor: pointer; transition: all 0.18s;
+    display: flex; align-items: center; gap: 8px;
+    min-width: 140px; justify-content: center;
+  }
+  .start-call-btn:hover { background: #00f5a8; transform: scale(1.02); }
+
+  .vc-sidebar {
+    display: flex; flex-direction: column; gap: 16px;
+  }
+
+  .vc-side-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 18px;
+    display: flex; flex-direction: column; gap: 14px;
+  }
+
+  .side-panel-title {
+    font-size: 11px; font-weight: 700; letter-spacing: 1px;
+    text-transform: uppercase; color: var(--text-dim);
+  }
+
+  .teams-btn {
+    width: 100%;
+    padding: 13px;
+    border-radius: var(--radius-sm);
+    border: none;
+    font-size: 14px; font-weight: 800;
+    cursor: pointer; transition: all 0.18s;
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+  }
+  .teams-btn.join { background: #5558ff; color: #fff; }
+  .teams-btn.join:hover { background: #4447ee; }
+  .teams-btn.schedule { background: var(--surface2); border: 1px solid var(--border); color: var(--text-dim); }
+  .teams-btn.schedule:hover { border-color: var(--accent); color: var(--text); }
+
+  .layout-btn {
+    padding: 9px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-dim); font-size: 11px; font-weight: 700;
+    cursor: pointer; transition: all 0.18s; text-align: center;
+    display: flex; align-items: center; gap: 8px; justify-content: center;
+  }
+  .layout-btn:hover { border-color: var(--accent); color: var(--text); }
+  .layout-btn.active { background: var(--accent-glow); border-color: var(--accent); color: #fff; }
+
+  .share-source-btn {
+    padding: 11px 14px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-dim); font-size: 12px; font-weight: 600;
+    cursor: pointer; transition: all 0.18s;
+    display: flex; align-items: center; gap: 10px;
+    width: 100%;
+  }
+  .share-source-btn:hover { border-color: var(--accent); color: var(--text); }
+  .share-source-btn.active { background: rgba(0,118,255,0.12); border-color: var(--accent); color: #fff; }
+  .share-source-btn .ss-icon { font-size: 18px; }
+
+  /* ── TOAST ── */
+  #toast-container {
+    position: fixed; bottom: 20px; right: 20px;
+    display: flex; flex-direction: column; gap: 8px;
+    z-index: 200; pointer-events: none;
+  }
+  .toast {
+    padding: 10px 18px;
+    background: var(--surface2);
+    border: 1px solid rgba(0,118,255,0.4);
+    border-radius: 10px;
+    color: var(--text); font-size: 12px; font-weight: 600;
+    animation: toastIn 0.2s ease;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.5);
+  }
+  @keyframes toastIn { from { opacity:0; transform: translateX(16px); } to { opacity:1; transform: translateX(0); } }
+
+  /* ── POWER CONFIRM MODAL ── */
+  .modal-overlay {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 100;
+    align-items: center; justify-content: center;
+  }
+  .modal-overlay.show { display: flex; }
+  .modal-box {
+    background: var(--surface);
+    border: 1px solid rgba(255,61,90,0.3);
+    border-radius: 20px;
+    padding: 40px;
+    text-align: center;
+    width: 400px;
+    display: flex; flex-direction: column; align-items: center; gap: 20px;
+  }
+  .modal-icon { font-size: 48px; }
+  .modal-title { font-size: 22px; font-weight: 800; }
+  .modal-desc { font-size: 14px; color: var(--text-dim); line-height: 1.6; }
+  .modal-btns { display: flex; gap: 14px; width: 100%; }
+  .modal-cancel {
+    flex: 1; padding: 13px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-dim); font-size: 14px; font-weight: 700;
+    cursor: pointer;
+  }
+  .modal-confirm {
+    flex: 1; padding: 13px;
+    background: var(--red); border: none;
+    border-radius: var(--radius-sm);
+    color: #fff; font-size: 14px; font-weight: 800;
+    cursor: pointer;
+  }
+
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--surface3); border-radius: 2px; }
+</style>
 </head>
 <body>
-  <!-- Touch Panel Shell -->
-  <div id="panel-shell">
-    <div id="panel-header">
-      <div id="room-name">AMO BOARDROOM</div>
-      <div id="header-right">
-        <div id="clock" class="header-info"></div>
-        <div id="system-status" class="status-dot offline" title="System Offline"></div>
-        <button id="btn-power" class="power-btn" onclick="SIMPL.toggleSystemPower()">
-          <span class="icon-power">⏻</span>
+
+<!-- ── TOP BAR ── -->
+<div class="topbar">
+  <div class="topbar-logo">
+    <div class="logo-mark">A</div>
+    <div>
+      <div class="logo-text">ASMO Boardroom</div>
+      <div class="logo-sub">AV Control System</div>
+    </div>
+  </div>
+
+  <div class="topbar-center">
+    <button class="nav-btn active" onclick="showPage('home')" id="nav-home">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9,22 9,12 15,12 15,22"/></svg>
+      Home
+    </button>
+    <button class="nav-btn" onclick="showPage('display')" id="nav-display">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+      Displays
+    </button>
+    <button class="nav-btn" onclick="showPage('camera')" id="nav-camera">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+      Cameras
+    </button>
+    <button class="nav-btn" onclick="showPage('audio')" id="nav-audio">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+      Audio
+    </button>
+    <button class="nav-btn" onclick="showPage('vc')" id="nav-vc">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 16.92v3a2 2 0 01-2.18 2A19.79 19.79 0 013.1 5.18 2 2 0 015.09 3h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L9.09 10.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
+      Video Conf.
+    </button>
+  </div>
+
+  <div class="topbar-right">
+    <div class="status-pill online" id="status-pill">
+      <div class="status-dot"></div>
+      <span id="status-text">System Online</span>
+    </div>
+    <div class="clock" id="clock">--:--</div>
+  </div>
+</div>
+
+<!-- ══ HOME ══ -->
+<div class="page active" id="page-home">
+  <div class="home-header">
+    <div class="home-title">ASMO Boardroom</div>
+    <div class="home-sub">Select a control section to begin</div>
+  </div>
+
+  <div class="home-cards">
+    <div class="home-card c-blue" onclick="showPage('display')">
+      <div class="home-card-icon">🖥️</div>
+      <div class="home-card-label">Displays</div>
+      <div class="home-card-desc">Control 2× 98″ Sony BRAVIA screens &amp; HD-MD-8×8 matrix</div>
+    </div>
+    <div class="home-card c-green" onclick="showPage('camera')">
+      <div class="home-card-icon">📷</div>
+      <div class="home-card-label">Cameras</div>
+      <div class="home-card-desc">Pan, tilt &amp; zoom both AVER CAM570 PTZ cameras</div>
+    </div>
+    <div class="home-card c-orange" onclick="showPage('audio')">
+      <div class="home-card-icon">🎙️</div>
+      <div class="home-card-label">Audio</div>
+      <div class="home-card-desc">Shure MXA920 mics, Compute DSP &amp; ceiling speaker zones</div>
+    </div>
+    <div class="home-card c-purple" onclick="showPage('vc')">
+      <div class="home-card-icon">💬</div>
+      <div class="home-card-label">Video Conf.</div>
+      <div class="home-card-desc">Microsoft Teams meetings &amp; ClickShare content sharing</div>
+    </div>
+  </div>
+
+  <button class="poweroff-btn" onclick="document.getElementById('powerModal').classList.add('show')">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18.36 6.64A9 9 0 1 1 5.64 6.64"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
+    System Power Off
+  </button>
+</div>
+
+<!-- ══ DISPLAY ══ -->
+<div class="page" id="page-display">
+  <div style="display:flex;flex-direction:column;width:100%;gap:20px;">
+    <div class="page-title">Display Control &nbsp;<span>· Crestron HD-MD-8×8 Matrix</span></div>
+
+    <div class="display-grid">
+      <!-- Display 1 -->
+      <div class="display-panel">
+        <div class="panel-header">
+          <div>
+            <div class="panel-title">📺 Display 1 — Sony 98″ BRAVIA (Left)</div>
+            <div style="font-size:11px;color:var(--text-dim);margin-top:3px;">98B253L · Wall Area Left</div>
+          </div>
+          <div class="panel-badge badge-on" id="d1-badge">ON</div>
+        </div>
+
+        <div class="display-preview has-signal" id="d1-preview">
+          <div id="d1-signal-label" style="color:var(--text-muted);font-size:13px;">▶ ClickShare Active</div>
+        </div>
+
+        <div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text-dim);">Source</div>
+        <div class="source-grid" id="d1-sources">
+          <button class="source-btn active" data-src="1" data-label="ClickShare 1" onclick="setSource(this,1)">
+            <span class="src-icon">📡</span>
+            <span class="src-label">ClickShare 1</span>
+          </button>
+          <button class="source-btn" data-src="2" data-label="HDMI 1" onclick="setSource(this,1)">
+            <span class="src-icon">🔌</span>
+            <span class="src-label">HDMI 1</span>
+          </button>
+          <button class="source-btn" data-src="3" data-label="HDMI 2" onclick="setSource(this,1)">
+            <span class="src-icon">🔌</span>
+            <span class="src-label">HDMI 2</span>
+          </button>
+          <button class="source-btn" data-src="4" data-label="Laptop USB-C" onclick="setSource(this,1)">
+            <span class="src-icon">💻</span>
+            <span class="src-label">Laptop USB-C</span>
+          </button>
+          <button class="source-btn" data-src="5" data-label="ClickShare 2" onclick="setSource(this,1)">
+            <span class="src-icon">📡</span>
+            <span class="src-label">ClickShare 2</span>
+          </button>
+          <button class="source-btn" data-src="6" data-label="IPTV" onclick="setSource(this,1)">
+            <span class="src-icon">📺</span>
+            <span class="src-label">IPTV</span>
+          </button>
+        </div>
+
+        <div class="power-row">
+          <button class="btn-power-on" onclick="setDisplayOn(1)">⚡ Power On</button>
+          <button class="btn-power-off" onclick="setDisplayOff(1)">⏻ Power Off</button>
+        </div>
+      </div>
+
+      <!-- Display 2 -->
+      <div class="display-panel">
+        <div class="panel-header">
+          <div>
+            <div class="panel-title">📺 Display 2 — Sony 98″ BRAVIA (Right)</div>
+            <div style="font-size:11px;color:var(--text-dim);margin-top:3px;">98B253L · Wall Area Right</div>
+          </div>
+          <div class="panel-badge badge-on" id="d2-badge">ON</div>
+        </div>
+
+        <div class="display-preview" id="d2-preview">
+          <div id="d2-signal-label" style="color:var(--text-muted);font-size:13px;">No Signal</div>
+        </div>
+
+        <div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text-dim);">Source</div>
+        <div class="source-grid" id="d2-sources">
+          <button class="source-btn" data-src="1" data-label="ClickShare 1" onclick="setSource(this,2)">
+            <span class="src-icon">📡</span>
+            <span class="src-label">ClickShare 1</span>
+          </button>
+          <button class="source-btn" data-src="2" data-label="HDMI 1" onclick="setSource(this,2)">
+            <span class="src-icon">🔌</span>
+            <span class="src-label">HDMI 1</span>
+          </button>
+          <button class="source-btn" data-src="3" data-label="HDMI 2" onclick="setSource(this,2)">
+            <span class="src-icon">🔌</span>
+            <span class="src-label">HDMI 2</span>
+          </button>
+          <button class="source-btn" data-src="4" data-label="Laptop USB-C" onclick="setSource(this,2)">
+            <span class="src-icon">💻</span>
+            <span class="src-label">Laptop USB-C</span>
+          </button>
+          <button class="source-btn" data-src="5" data-label="ClickShare 2" onclick="setSource(this,2)">
+            <span class="src-icon">📡</span>
+            <span class="src-label">ClickShare 2</span>
+          </button>
+          <button class="source-btn active" data-src="7" data-label="HDMI 3" onclick="setSource(this,2)">
+            <span class="src-icon">🔌</span>
+            <span class="src-label">HDMI 3</span>
+          </button>
+        </div>
+
+        <div class="power-row">
+          <button class="btn-power-on" onclick="setDisplayOn(2)">⚡ Power On</button>
+          <button class="btn-power-off" onclick="setDisplayOff(2)">⏻ Power Off</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Matrix / All Control Bar -->
+    <div class="display-bottom">
+      <div class="all-displays-label">All Displays</div>
+      <button class="btn-all-on" onclick="setAllDisplays(true)">⚡ All On</button>
+      <button class="btn-all-off" onclick="setAllDisplays(false)">⏻ All Off</button>
+      <div class="divider-v"></div>
+      <div class="matrix-label">Matrix Route</div>
+      <select class="matrix-select" id="matrix-mode" onchange="setMatrixMode(this.value)">
+        <option value="mirror">Mirror — Both same source</option>
+        <option value="independent">Independent — Different sources</option>
+        <option value="extend">Extend — Left + Right layout</option>
+      </select>
+      <div class="divider-v"></div>
+      <div class="matrix-label" style="margin-left:auto;">AX-22MF Monitor</div>
+      <button class="btn-power-on" style="width:100px;font-size:12px;padding:8px 12px;" onclick="liftControl('deploy')">Deploy ▼</button>
+      <button class="btn-power-off" style="width:100px;font-size:12px;padding:8px 12px;" onclick="liftControl('retract')">Retract ▲</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ CAMERA ══ -->
+<div class="page" id="page-camera">
+  <div class="page-title">Camera Control &nbsp;<span>· AVER CAM570 PTZ</span></div>
+
+  <div class="camera-layout">
+    <div class="cam-preview-area">
+      <div class="cam-select-row">
+        <button class="cam-tab active" onclick="selectCam(1,this)">📷 Camera 1 — Left Wall</button>
+        <button class="cam-tab" onclick="selectCam(2,this)">📷 Camera 2 — Right Wall</button>
+      </div>
+
+      <div class="cam-feed">
+        <div class="cam-feed-badge">● REC</div>
+        <div class="cam-feed-icon">📷</div>
+        <div class="cam-feed-label">AVER CAM570 Feed — Waiting for signal</div>
+        <div class="cam-name-badge" id="cam-name-badge">Camera 1 · Left Wall</div>
+        <div class="cam-ptz-status" id="cam-ptz-status">P:50 T:50 Z:30</div>
+      </div>
+
+      <div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text-dim);">Presets</div>
+      <div class="preset-row" id="cam-presets">
+        <button class="preset-btn active" data-preset="1" onclick="recallPreset(this)">🎯 Wide Room</button>
+        <button class="preset-btn" data-preset="2" onclick="recallPreset(this)">👤 Presenter</button>
+        <button class="preset-btn" data-preset="3" onclick="recallPreset(this)">📋 Whiteboard</button>
+        <button class="preset-btn" data-preset="4" onclick="recallPreset(this)">🚪 Door View</button>
+        <button class="preset-btn" data-preset="5" onclick="saveCurrentPreset()">+ Save</button>
+      </div>
+    </div>
+
+    <!-- Controls sidebar -->
+    <div class="cam-controls">
+      <div>
+        <div class="ctrl-section-title">Pan / Tilt</div>
+        <div style="height:12px;"></div>
+        <div class="ptz-pad">
+          <div class="ptz-empty"></div>
+          <div class="ptz-btn" onmousedown="ptzStart('up')" onmouseup="ptzStop()" onmouseleave="ptzStop()" title="Tilt Up">▲</div>
+          <div class="ptz-empty"></div>
+          <div class="ptz-btn" onmousedown="ptzStart('left')" onmouseup="ptzStop()" onmouseleave="ptzStop()" title="Pan Left">◀</div>
+          <div class="ptz-btn center">PTZ</div>
+          <div class="ptz-btn" onmousedown="ptzStart('right')" onmouseup="ptzStop()" onmouseleave="ptzStop()" title="Pan Right">▶</div>
+          <div class="ptz-empty"></div>
+          <div class="ptz-btn" onmousedown="ptzStart('down')" onmouseup="ptzStop()" onmouseleave="ptzStop()" title="Tilt Down">▼</div>
+          <div class="ptz-empty"></div>
+        </div>
+      </div>
+
+      <div>
+        <div class="ctrl-section-title">Zoom</div>
+        <div style="height:12px;"></div>
+        <div class="zoom-row">
+          <div class="zoom-label">Zoom</div>
+          <div class="zoom-btn" onmousedown="ptzZoomStart('out')" onmouseup="ptzStop()" onmouseleave="ptzStop()">−</div>
+          <div class="zoom-btn" onmousedown="ptzZoomStart('in')" onmouseup="ptzStop()" onmouseleave="ptzStop()">+</div>
+        </div>
+        <div class="zoom-row" style="margin-top:8px;">
+          <div class="zoom-label">Focus</div>
+          <div class="zoom-btn" onmousedown="ptzFocusStart('near')" onmouseup="ptzStop()" onmouseleave="ptzStop()">−</div>
+          <div class="zoom-btn" onmousedown="ptzFocusStart('far')" onmouseup="ptzStop()" onmouseleave="ptzStop()">+</div>
+        </div>
+      </div>
+
+      <div>
+        <div class="ctrl-section-title">Auto Tracking</div>
+        <div style="height:12px;"></div>
+        <div class="tracking-toggle" onclick="toggleTracking()">
+          <div>
+            <div class="tracking-toggle-label">Auto Track</div>
+            <div style="font-size:11px;color:var(--text-dim);">AVER AI Tracking</div>
+          </div>
+          <div class="toggle-switch off" id="tracking-switch"></div>
+        </div>
+      </div>
+
+      <div>
+        <div class="ctrl-section-title">Speed</div>
+        <div style="height:12px;"></div>
+        <div style="display:flex;gap:8px;" id="speed-btns">
+          <button class="preset-btn" data-speed="1" onclick="setPtzSpeed(this)" style="font-size:11px;">Slow</button>
+          <button class="preset-btn active" data-speed="5" onclick="setPtzSpeed(this)" style="font-size:11px;">Medium</button>
+          <button class="preset-btn" data-speed="9" onclick="setPtzSpeed(this)" style="font-size:11px;">Fast</button>
+        </div>
+      </div>
+
+      <div>
+        <div class="ctrl-section-title">Output to Matrix</div>
+        <div style="height:12px;"></div>
+        <select class="matrix-select" style="width:100%;" id="cam-output-sel" onchange="setCamOutput(this.value)">
+          <option value="1">Display 1 (Left 98″)</option>
+          <option value="2">Display 2 (Right 98″)</option>
+          <option value="both">Both Displays</option>
+          <option value="teams">Teams Call Only</option>
+        </select>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ AUDIO ══ -->
+<div class="page" id="page-audio">
+  <div class="page-title">Audio Control &nbsp;<span>· Shure MXA920 + DSP</span></div>
+
+  <div class="audio-layout">
+    <!-- Microphones -->
+    <div class="audio-panel">
+      <div class="panel-title">🎙️ Ceiling Microphones</div>
+
+      <div class="mic-card">
+        <div class="mic-header">
+          <div>
+            <div class="mic-name">MXA920 — Zone A</div>
+            <div class="mic-location">Ceiling Position 1 · Conference End</div>
+          </div>
+          <button class="mute-btn active-mic" id="mic1-btn" onclick="toggleMic(1)">🟢 Live</button>
+        </div>
+        <div class="level-meter" id="meter-1"></div>
+        <div class="vol-row">
+          <div class="vol-label">Gain</div>
+          <input type="range" class="vol-slider" id="mic1-gain" min="0" max="100" value="75" oninput="updateMicGain(1, this)">
+          <div class="vol-value" id="mic1-gain-val">75</div>
+        </div>
+      </div>
+
+      <div class="mic-card">
+        <div class="mic-header">
+          <div>
+            <div class="mic-name">MXA920 — Zone B</div>
+            <div class="mic-location">Ceiling Position 2 · Presentation End</div>
+          </div>
+          <button class="mute-btn active-mic" id="mic2-btn" onclick="toggleMic(2)">🟢 Live</button>
+        </div>
+        <div class="level-meter" id="meter-2"></div>
+        <div class="vol-row">
+          <div class="vol-label">Gain</div>
+          <input type="range" class="vol-slider" id="mic2-gain" min="0" max="100" value="68" oninput="updateMicGain(2, this)">
+          <div class="vol-value" id="mic2-gain-val">68</div>
+        </div>
+      </div>
+
+      <div style="margin-top:auto;">
+        <div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text-dim);margin-bottom:10px;">Network Mute Button</div>
+        <div class="tracking-toggle" onclick="toggleNetworkMute()">
+          <div>
+            <div class="tracking-toggle-label">MXA Network Mute Button</div>
+            <div style="font-size:11px;color:var(--text-dim);">IMXA-NMB · Chairman Table</div>
+          </div>
+          <div class="toggle-switch" id="mute-btn-switch"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Speakers -->
+    <div class="audio-panel">
+      <div class="panel-title">🔊 Speaker Zones</div>
+
+      <div class="speaker-zone">
+        <div class="zone-icon">🔊</div>
+        <div class="zone-info">
+          <div class="zone-name">Zone 1 — Conference Side</div>
+          <div class="zone-desc">4× SHURE MXNGW-C Ceiling Speakers</div>
+        </div>
+        <div class="zone-toggle" id="zone1-toggle" onclick="toggleZone(1)"></div>
+      </div>
+
+      <div class="speaker-zone">
+        <div class="zone-icon">🔊</div>
+        <div class="zone-info">
+          <div class="zone-name">Zone 2 — Presentation Side</div>
+          <div class="zone-desc">4× SHURE MXNGW-C Ceiling Speakers</div>
+        </div>
+        <div class="zone-toggle" id="zone2-toggle" onclick="toggleZone(2)"></div>
+      </div>
+
+      <div style="margin-top:8px;">
+        <div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text-dim);margin-bottom:10px;">Audio Preset</div>
+        <div style="display:flex;flex-direction:column;gap:8px;" id="audio-presets">
+          <button class="preset-audio-btn active" data-preset="meeting" onclick="selectAudioPreset(this)">🎙️ Meeting Mode</button>
+          <button class="preset-audio-btn" data-preset="presentation" onclick="selectAudioPreset(this)">📽️ Presentation Mode</button>
+          <button class="preset-audio-btn" data-preset="videocall" onclick="selectAudioPreset(this)">💬 Video Call Mode</button>
+          <button class="preset-audio-btn" data-preset="mute" onclick="selectAudioPreset(this)">🔇 All Mute</button>
+        </div>
+      </div>
+
+      <div style="margin-top:auto;">
+        <div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text-dim);margin-bottom:10px;">DSP</div>
+        <div class="tracking-toggle">
+          <div>
+            <div class="tracking-toggle-label">Shure Compute DSP</div>
+            <div style="font-size:11px;color:var(--green);">Online · Processing</div>
+          </div>
+          <div class="toggle-switch" id="dsp-switch"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Master volume -->
+    <div class="master-panel">
+      <div class="ctrl-section-title">Master Volume</div>
+      <div class="master-vol-wrap">
+        <div class="master-vol-num" id="master-vol-num">70</div>
+        <div class="master-vol-unit">dB</div>
+        <input type="range" class="vol-vertical" id="master-vol-slider" min="0" max="100" value="70"
+               oninput="updateMasterVol(this.value)">
+      </div>
+      <button class="all-mute-btn" id="all-mute-btn" onclick="toggleAllMute()">🔇 MUTE ALL</button>
+      <div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text-dim);align-self:flex-start;margin-top:8px;">Shure ANIUSB</div>
+      <div class="tracking-toggle" style="width:100%;">
+        <div>
+          <div style="font-size:12px;font-weight:600;">Audio Adapter</div>
+          <div style="font-size:11px;color:var(--green);" id="aniusb-status">Connected</div>
+        </div>
+        <div class="toggle-switch" id="aniusb-switch"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ VIDEO CONF ══ -->
+<div class="page" id="page-vc">
+  <div class="page-title">Video Conferencing &nbsp;<span>· Microsoft Teams</span></div>
+
+  <div class="vc-layout">
+    <div class="vc-main">
+      <div class="meeting-status-bar">
+        <div class="meeting-info">
+          <div class="meeting-name">ASMO Weekly Boardroom Meeting</div>
+          <div class="meeting-time" id="meeting-date"></div>
+        </div>
+        <div class="meeting-timer" id="meeting-timer">00:00:00</div>
+      </div>
+
+      <div class="vc-preview">
+        <div class="vc-feed main-feed">
+          <div class="vc-feed-icon">📷</div>
+          <div class="vc-feed-name" id="vc-cam-label">Camera Feed — Waiting</div>
+          <div class="vc-feed-label" id="vc-cam-badge">AVER CAM570 · Active</div>
+        </div>
+        <div class="vc-feed">
+          <div class="vc-feed-avatar" style="background:rgba(0,118,255,0.2);color:var(--accent2);">R</div>
+          <div class="vc-feed-name">Remote Participant</div>
+          <div class="vc-feed-label">Teams</div>
+        </div>
+        <div class="vc-feed">
+          <div class="vc-feed-avatar" style="background:rgba(162,89,255,0.2);color:#c084ff;">S</div>
+          <div class="vc-feed-name">Screen Share</div>
+          <div class="vc-feed-label">Content</div>
+        </div>
+      </div>
+
+      <div class="vc-controls-bar">
+        <button class="vc-ctrl-btn muted-state" id="vc-mic-btn" onclick="toggleVcCtrl(this,'mic')">
+          <div class="icon">🎙️</div>
+          <div>Mic Off</div>
+        </button>
+        <button class="vc-ctrl-btn active" id="vc-cam-btn" onclick="toggleVcCtrl(this,'cam')">
+          <div class="icon">📷</div>
+          <div>Cam On</div>
+        </button>
+        <button class="vc-ctrl-btn" id="vc-share-btn" onclick="toggleVcCtrl(this,'share')">
+          <div class="icon">🖥️</div>
+          <div>Share</div>
+        </button>
+        <button class="vc-ctrl-btn" id="vc-chat-btn" onclick="toggleVcCtrl(this,'chat')">
+          <div class="icon">💬</div>
+          <div>Chat</div>
+        </button>
+        <button class="vc-ctrl-btn" id="vc-people-btn" onclick="toggleVcCtrl(this,'people')">
+          <div class="icon">👥</div>
+          <div>People (4)</div>
+        </button>
+        <div style="flex:1;"></div>
+        <button class="end-call-btn" id="call-toggle" onclick="toggleCall(this)">
+          📞 End Call
         </button>
       </div>
     </div>
 
-    <!-- Page Navigation -->
-    <nav id="page-nav">
-      <button class="nav-btn active" data-page="home"     onclick="SIMPL.showPage('home')">Home</button>
-      <button class="nav-btn"        data-page="displays" onclick="SIMPL.showPage('displays')">Displays</button>
-      <button class="nav-btn"        data-page="camera"   onclick="SIMPL.showPage('camera')">Cameras</button>
-      <button class="nav-btn"        data-page="audio"    onclick="SIMPL.showPage('audio')">Audio</button>
-      <button class="nav-btn"        data-page="conf"     onclick="SIMPL.showPage('conf')">Conference</button>
-      <button class="nav-btn"        data-page="doors"    onclick="SIMPL.showPage('doors')">Doors</button>
-    </nav>
-
-    <!-- Page: Home -->
-    <div id="page-home" class="page active">
-      <div class="page-title">System Overview</div>
-      <div class="home-grid">
-        <div class="status-card" id="card-system">
-          <div class="card-icon">🏢</div>
-          <div class="card-label">System</div>
-          <div class="card-value" id="sys-power-label">STANDBY</div>
-        </div>
-        <div class="status-card" id="card-display1">
-          <div class="card-icon">🖥</div>
-          <div class="card-label">Display 1</div>
-          <div class="card-value" id="disp1-status">OFF</div>
-        </div>
-        <div class="status-card" id="card-display2">
-          <div class="card-icon">🖥</div>
-          <div class="card-label">Display 2</div>
-          <div class="card-value" id="disp2-status">OFF</div>
-        </div>
-        <div class="status-card" id="card-matrix">
-          <div class="card-icon">🔀</div>
-          <div class="card-label">Matrix</div>
-          <div class="card-value" id="matrix-status">IDLE</div>
-        </div>
-        <div class="status-card" id="card-cam">
-          <div class="card-icon">📹</div>
-          <div class="card-label">Cameras</div>
-          <div class="card-value" id="cam-status">STANDBY</div>
-        </div>
-        <div class="status-card" id="card-audio">
-          <div class="card-icon">🔊</div>
-          <div class="card-label">Audio</div>
-          <div class="card-value" id="audio-status">MUTED</div>
-        </div>
+    <!-- Sidebar -->
+    <div class="vc-sidebar">
+      <div class="vc-side-panel">
+        <div class="side-panel-title">Teams Actions</div>
+        <button class="teams-btn join" onclick="joinTeamsMeeting()">
+          <span style="font-size:18px;">💬</span> Join Teams Meeting
+        </button>
+        <button class="teams-btn schedule" onclick="toast('Opening Teams calendar…')">
+          📅 Schedule Meeting
+        </button>
       </div>
 
-      <div class="mode-section">
-        <div class="section-label">Room Modes</div>
-        <div class="mode-btns">
-          <button class="mode-btn" id="mode-presentation" onclick="SIMPL.setRoomMode('presentation')">
-            <span>📊</span> Presentation
-          </button>
-          <button class="mode-btn" id="mode-videoconf"    onclick="SIMPL.setRoomMode('videoconf')">
-            <span>📹</span> Video Conf
-          </button>
-          <button class="mode-btn" id="mode-bluray"       onclick="SIMPL.setRoomMode('bluray')">
-            <span>💿</span> Blu-ray
-          </button>
-          <button class="mode-btn" id="mode-wireless"     onclick="SIMPL.setRoomMode('wireless')">
-            <span>📶</span> Wireless
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Page: Displays -->
-    <div id="page-displays" class="page">
-      <div class="page-title">Display &amp; Matrix Control</div>
-      <div class="displays-layout">
-        <!-- Display 1 -->
-        <div class="display-panel">
-          <div class="display-header">
-            <span class="display-name">Display 1 (Left)</span>
-            <label class="toggle-switch">
-              <input type="checkbox" id="disp1-toggle" onchange="SIMPL.toggleDisplay(1, this.checked)" />
-              <span class="slider"></span>
-            </label>
-          </div>
-          <div class="display-preview" id="disp1-preview">
-            <div class="preview-label" id="disp1-input-label">— NO SIGNAL —</div>
-          </div>
-          <div class="input-grid">
-            <button class="input-btn" id="d1-src1" onclick="SIMPL.routeMatrix(1,1)">Blu-ray</button>
-            <button class="input-btn" id="d1-src2" onclick="SIMPL.routeMatrix(1,2)">Laptop 1</button>
-            <button class="input-btn" id="d1-src3" onclick="SIMPL.routeMatrix(1,3)">Laptop 2</button>
-            <button class="input-btn" id="d1-src4" onclick="SIMPL.routeMatrix(1,4)">PC</button>
-            <button class="input-btn" id="d1-src5" onclick="SIMPL.routeMatrix(1,5)">Wireless 1</button>
-            <button class="input-btn" id="d1-src6" onclick="SIMPL.routeMatrix(1,6)">Wireless 2</button>
-          </div>
-          <div class="display-controls">
-            <button class="ctrl-btn" onclick="SIMPL.displayCmd(1,'vol_up')">Vol +</button>
-            <button class="ctrl-btn" onclick="SIMPL.displayCmd(1,'vol_dn')">Vol −</button>
-            <button class="ctrl-btn" onclick="SIMPL.displayCmd(1,'mute')">Mute</button>
-            <button class="ctrl-btn" onclick="SIMPL.displayCmd(1,'freeze')">Freeze</button>
-          </div>
-        </div>
-
-        <!-- Display 2 -->
-        <div class="display-panel">
-          <div class="display-header">
-            <span class="display-name">Display 2 (Right)</span>
-            <label class="toggle-switch">
-              <input type="checkbox" id="disp2-toggle" onchange="SIMPL.toggleDisplay(2, this.checked)" />
-              <span class="slider"></span>
-            </label>
-          </div>
-          <div class="display-preview" id="disp2-preview">
-            <div class="preview-label" id="disp2-input-label">— NO SIGNAL —</div>
-          </div>
-          <div class="input-grid">
-            <button class="input-btn" id="d2-src1" onclick="SIMPL.routeMatrix(2,1)">Blu-ray</button>
-            <button class="input-btn" id="d2-src2" onclick="SIMPL.routeMatrix(2,2)">Laptop 1</button>
-            <button class="input-btn" id="d2-src3" onclick="SIMPL.routeMatrix(2,3)">Laptop 2</button>
-            <button class="input-btn" id="d2-src4" onclick="SIMPL.routeMatrix(2,4)">PC</button>
-            <button class="input-btn" id="d2-src5" onclick="SIMPL.routeMatrix(2,5)">Wireless 1</button>
-            <button class="input-btn" id="d2-src6" onclick="SIMPL.routeMatrix(2,6)">Wireless 2</button>
-          </div>
-          <div class="display-controls">
-            <button class="ctrl-btn" onclick="SIMPL.displayCmd(2,'vol_up')">Vol +</button>
-            <button class="ctrl-btn" onclick="SIMPL.displayCmd(2,'vol_dn')">Vol −</button>
-            <button class="ctrl-btn" onclick="SIMPL.displayCmd(2,'mute')">Mute</button>
-            <button class="ctrl-btn" onclick="SIMPL.displayCmd(2,'freeze')">Freeze</button>
-          </div>
-        </div>
+      <div class="vc-side-panel">
+        <div class="side-panel-title">Content Share</div>
+        <button class="share-source-btn active" data-src="clickshare1" onclick="selectShare(this)">
+          <span class="ss-icon">📡</span> ClickShare CX-30
+        </button>
+        <button class="share-source-btn" data-src="hdmi1" onclick="selectShare(this)">
+          <span class="ss-icon">💻</span> Laptop HDMI 1
+        </button>
+        <button class="share-source-btn" data-src="hdmi2" onclick="selectShare(this)">
+          <span class="ss-icon">💻</span> Laptop HDMI 2
+        </button>
+        <button class="share-source-btn" data-src="delegate" onclick="selectShare(this)">
+          <span class="ss-icon">🖥️</span> Delegate Laptop
+        </button>
       </div>
 
-      <!-- Matrix Status Grid -->
-      <div class="matrix-section">
-        <div class="section-label">4×4 HDMI Matrix Routing</div>
-        <table class="matrix-table">
-          <thead>
-            <tr>
-              <th>Output / Input →</th>
-              <th>Blu-ray</th>
-              <th>Laptop 1</th>
-              <th>Laptop 2</th>
-              <th>PC</th>
-              <th>Wireless 1</th>
-              <th>Wireless 2</th>
-            </tr>
-          </thead>
-          <tbody id="matrix-body">
-            <tr>
-              <td>Display 1</td>
-              <td><div class="matrix-cell" id="mx-1-1"></div></td>
-              <td><div class="matrix-cell" id="mx-1-2"></div></td>
-              <td><div class="matrix-cell" id="mx-1-3"></div></td>
-              <td><div class="matrix-cell" id="mx-1-4"></div></td>
-              <td><div class="matrix-cell" id="mx-1-5"></div></td>
-              <td><div class="matrix-cell" id="mx-1-6"></div></td>
-            </tr>
-            <tr>
-              <td>Display 2</td>
-              <td><div class="matrix-cell" id="mx-2-1"></div></td>
-              <td><div class="matrix-cell" id="mx-2-2"></div></td>
-              <td><div class="matrix-cell" id="mx-2-3"></div></td>
-              <td><div class="matrix-cell" id="mx-2-4"></div></td>
-              <td><div class="matrix-cell" id="mx-2-5"></div></td>
-              <td><div class="matrix-cell" id="mx-2-6"></div></td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <!-- Page: Camera -->
-    <div id="page-camera" class="page">
-      <div class="page-title">PTZ Camera Control</div>
-      <div class="camera-layout">
-        <!-- Camera selector -->
-        <div class="cam-selector">
-          <button class="cam-sel-btn active" id="camsel-1" onclick="SIMPL.selectCamera(1)">AVPTZ Camera 1</button>
-          <button class="cam-sel-btn"        id="camsel-2" onclick="SIMPL.selectCamera(2)">NKU Camera 2</button>
-        </div>
-
-        <!-- Viewport -->
-        <div class="cam-viewport" id="cam-viewport">
-          <div class="cam-overlay-label" id="cam-label">AVPTZ – Camera 1</div>
-          <div class="cam-ptz-indicator" id="cam-ptz-ind">PTZ READY</div>
-        </div>
-
-        <!-- PTZ joystick pad -->
-        <div class="ptz-pad">
-          <button class="ptz-btn tilt-up"   onmousedown="SIMPL.ptzMove('up',1)"   onmouseup="SIMPL.ptzStop()">▲</button>
-          <button class="ptz-btn tilt-dn"   onmousedown="SIMPL.ptzMove('down',1)" onmouseup="SIMPL.ptzStop()">▼</button>
-          <button class="ptz-btn pan-left"  onmousedown="SIMPL.ptzMove('left',1)" onmouseup="SIMPL.ptzStop()">◀</button>
-          <button class="ptz-btn pan-right" onmousedown="SIMPL.ptzMove('right',1)"onmouseup="SIMPL.ptzStop()">▶</button>
-          <div class="ptz-center">PTZ</div>
-          <button class="ptz-btn zoom-in"   onmousedown="SIMPL.ptzZoom('in')"    onmouseup="SIMPL.ptzStop()">+</button>
-          <button class="ptz-btn zoom-out"  onmousedown="SIMPL.ptzZoom('out')"   onmouseup="SIMPL.ptzStop()">−</button>
-        </div>
-
-        <!-- Presets -->
-        <div class="preset-section">
-          <div class="section-label">Camera Presets</div>
-          <div class="preset-grid">
-            <button class="preset-btn" onclick="SIMPL.recallPreset(1)">Wide Shot</button>
-            <button class="preset-btn" onclick="SIMPL.recallPreset(2)">Chairman</button>
-            <button class="preset-btn" onclick="SIMPL.recallPreset(3)">Presenter</button>
-            <button class="preset-btn" onclick="SIMPL.recallPreset(4)">Table Left</button>
-            <button class="preset-btn" onclick="SIMPL.recallPreset(5)">Table Right</button>
-            <button class="preset-btn" onclick="SIMPL.recallPreset(6)">Screen View</button>
-          </div>
-          <div class="preset-save-row">
-            <span class="section-label-sm">Save to Preset:</span>
-            <select id="preset-save-sel">
-              <option value="1">1 – Wide Shot</option>
-              <option value="2">2 – Chairman</option>
-              <option value="3">3 – Presenter</option>
-              <option value="4">4 – Table Left</option>
-              <option value="5">5 – Table Right</option>
-              <option value="6">6 – Screen View</option>
-            </select>
-            <button class="save-btn" onclick="SIMPL.savePreset()">Save</button>
-          </div>
+      <div class="vc-side-panel">
+        <div class="side-panel-title">Layout</div>
+        <div style="display:flex;flex-direction:column;gap:7px;" id="layout-btns">
+          <button class="layout-btn active" data-layout="gallery" onclick="selectLayout(this)">⬜ Gallery View</button>
+          <button class="layout-btn" data-layout="speaker" onclick="selectLayout(this)">🎤 Speaker View</button>
+          <button class="layout-btn" data-layout="content_people" onclick="selectLayout(this)">📋 Content + People</button>
+          <button class="layout-btn" data-layout="fullscreen" onclick="selectLayout(this)">🖥️ Full Screen Content</button>
         </div>
       </div>
-    </div>
-
-    <!-- Page: Audio -->
-    <div id="page-audio" class="page">
-      <div class="page-title">Audio Control</div>
-      <div class="audio-layout">
-        <!-- Master volume -->
-        <div class="audio-zone master">
-          <div class="zone-label">Master Volume</div>
-          <div class="volume-row">
-            <button class="vol-btn" onclick="SIMPL.adjustVolume('master',-5)">−</button>
-            <input type="range" class="vol-slider" id="vol-master" min="0" max="100" value="0"
-                   oninput="SIMPL.setVolume('master', this.value)" />
-            <button class="vol-btn" onclick="SIMPL.adjustVolume('master',5)">+</button>
-            <span class="vol-display" id="vol-master-val">0%</span>
-          </div>
-          <button class="mute-btn" id="mute-master" onclick="SIMPL.toggleMute('master')">MUTE ALL</button>
-        </div>
-
-        <!-- Zone controls -->
-        <div class="zone-grid">
-          <div class="audio-zone" id="zone-ceiling">
-            <div class="zone-label">Ceiling Speakers</div>
-            <div class="volume-row">
-              <button class="vol-btn" onclick="SIMPL.adjustVolume('ceiling',-5)">−</button>
-              <input type="range" class="vol-slider" id="vol-ceiling" min="0" max="100" value="0"
-                     oninput="SIMPL.setVolume('ceiling', this.value)" />
-              <button class="vol-btn" onclick="SIMPL.adjustVolume('ceiling',5)">+</button>
-              <span class="vol-display" id="vol-ceiling-val">0%</span>
-            </div>
-            <button class="mute-btn sm" id="mute-ceiling" onclick="SIMPL.toggleMute('ceiling')">Mute</button>
-          </div>
-
-          <div class="audio-zone" id="zone-conf">
-            <div class="zone-label">Conf Mic (Shure)</div>
-            <div class="volume-row">
-              <button class="vol-btn" onclick="SIMPL.adjustVolume('conf',-5)">−</button>
-              <input type="range" class="vol-slider" id="vol-conf" min="0" max="100" value="50"
-                     oninput="SIMPL.setVolume('conf', this.value)" />
-              <button class="vol-btn" onclick="SIMPL.adjustVolume('conf',5)">+</button>
-              <span class="vol-display" id="vol-conf-val">50%</span>
-            </div>
-            <button class="mute-btn sm" id="mute-conf" onclick="SIMPL.toggleMute('conf')">Mute</button>
-          </div>
-
-          <div class="audio-zone" id="zone-hdmi">
-            <div class="zone-label">HDMI Audio</div>
-            <div class="volume-row">
-              <button class="vol-btn" onclick="SIMPL.adjustVolume('hdmi',-5)">−</button>
-              <input type="range" class="vol-slider" id="vol-hdmi" min="0" max="100" value="0"
-                     oninput="SIMPL.setVolume('hdmi', this.value)" />
-              <button class="vol-btn" onclick="SIMPL.adjustVolume('hdmi',5)">+</button>
-              <span class="vol-display" id="vol-hdmi-val">0%</span>
-            </div>
-            <button class="mute-btn sm" id="mute-hdmi" onclick="SIMPL.toggleMute('hdmi')">Mute</button>
-          </div>
-        </div>
-
-        <!-- Audio Source selector -->
-        <div class="audio-source-section">
-          <div class="section-label">Audio Follow Video</div>
-          <div class="afv-btns">
-            <button class="afv-btn active" id="afv-on"  onclick="SIMPL.setAFV(true)">ON</button>
-            <button class="afv-btn"        id="afv-off" onclick="SIMPL.setAFV(false)">OFF</button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Page: Conference -->
-    <div id="page-conf" class="page">
-      <div class="page-title">Video Conference – Teams</div>
-      <div class="conf-layout">
-        <div class="conf-status-bar">
-          <div class="conf-indicator" id="conf-state-dot"></div>
-          <span id="conf-state-label">Not in a call</span>
-        </div>
-
-        <div class="conf-controls">
-          <button class="conf-btn join"  id="btn-join-call"  onclick="SIMPL.confJoin()">Join Call</button>
-          <button class="conf-btn leave" id="btn-leave-call" onclick="SIMPL.confLeave()" disabled>End Call</button>
-        </div>
-
-        <div class="conf-grid">
-          <div class="conf-tile" id="tile-cam">
-            <div class="tile-icon">📹</div>
-            <div class="tile-label">Camera</div>
-            <button class="tile-toggle on" id="toggle-cam" onclick="SIMPL.confToggle('cam')">ON</button>
-          </div>
-          <div class="conf-tile" id="tile-mic">
-            <div class="tile-icon">🎤</div>
-            <div class="tile-label">Microphone</div>
-            <button class="tile-toggle on" id="toggle-mic" onclick="SIMPL.confToggle('mic')">ON</button>
-          </div>
-          <div class="conf-tile" id="tile-share">
-            <div class="tile-icon">🖥</div>
-            <div class="tile-label">Screen Share</div>
-            <button class="tile-toggle off" id="toggle-share" onclick="SIMPL.confToggle('share')">OFF</button>
-          </div>
-          <div class="conf-tile" id="tile-record">
-            <div class="tile-icon">⏺</div>
-            <div class="tile-label">Recording</div>
-            <button class="tile-toggle off" id="toggle-record" onclick="SIMPL.confToggle('record')">OFF</button>
-          </div>
-        </div>
-
-        <div class="camera-select-section">
-          <div class="section-label">Active Camera for Teams</div>
-          <div class="cam-conf-btns">
-            <button class="cam-conf-btn active" id="conf-cam1" onclick="SIMPL.confSelectCamera(1)">AVPTZ Cam 1</button>
-            <button class="cam-conf-btn"        id="conf-cam2" onclick="SIMPL.confSelectCamera(2)">NKU Cam 2</button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Page: Doors -->
-    <div id="page-doors" class="page">
-      <div class="page-title">Door Entrance Displays</div>
-      <div class="doors-layout">
-        <div class="door-panel" id="door1-panel">
-          <div class="door-header">Entrance Display 1</div>
-          <div class="door-preview" id="door1-preview">
-            <div class="door-msg" id="door1-msg">AMO BOARDROOM</div>
-          </div>
-          <div class="door-controls">
-            <label class="toggle-switch">
-              <input type="checkbox" id="door1-toggle" onchange="SIMPL.toggleDoorDisplay(1, this.checked)" />
-              <span class="slider"></span>
-            </label>
-            <span class="toggle-label">Display On</span>
-          </div>
-          <div class="door-content">
-            <div class="section-label">Message</div>
-            <div class="door-msg-btns">
-              <button class="door-btn" onclick="SIMPL.setDoorMsg(1,'AMO BOARDROOM')">Room Name</button>
-              <button class="door-btn" onclick="SIMPL.setDoorMsg(1,'IN USE')">In Use</button>
-              <button class="door-btn" onclick="SIMPL.setDoorMsg(1,'MEETING IN PROGRESS')">Meeting</button>
-              <button class="door-btn" onclick="SIMPL.setDoorMsg(1,'AVAILABLE')">Available</button>
-            </div>
-          </div>
-        </div>
-
-        <div class="door-panel" id="door2-panel">
-          <div class="door-header">Entrance Display 2</div>
-          <div class="door-preview" id="door2-preview">
-            <div class="door-msg" id="door2-msg">AMO BOARDROOM</div>
-          </div>
-          <div class="door-controls">
-            <label class="toggle-switch">
-              <input type="checkbox" id="door2-toggle" onchange="SIMPL.toggleDoorDisplay(2, this.checked)" />
-              <span class="slider"></span>
-            </label>
-            <span class="toggle-label">Display On</span>
-          </div>
-          <div class="door-content">
-            <div class="section-label">Message</div>
-            <div class="door-msg-btns">
-              <button class="door-btn" onclick="SIMPL.setDoorMsg(2,'AMO BOARDROOM')">Room Name</button>
-              <button class="door-btn" onclick="SIMPL.setDoorMsg(2,'IN USE')">In Use</button>
-              <button class="door-btn" onclick="SIMPL.setDoorMsg(2,'MEETING IN PROGRESS')">Meeting</button>
-              <button class="door-btn" onclick="SIMPL.setDoorMsg(2,'AVAILABLE')">Available</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Footer -->
-    <div id="panel-footer">
-      <span id="footer-mode">Mode: Standby</span>
-      <span id="footer-ip">CP4N · 192.168.1.100</span>
     </div>
   </div>
+</div>
 
-  <script src="js/simpl.js"></script>
-  <script src="js/modules/display.js"></script>
-  <script src="js/modules/matrix.js"></script>
-  <script src="js/modules/camera.js"></script>
-  <script src="js/modules/audio.js"></script>
-  <script>
-    SIMPL.init();
-  </script>
+<!-- Power Off Modal -->
+<div class="modal-overlay" id="powerModal">
+  <div class="modal-box">
+    <div class="modal-icon">⚡</div>
+    <div class="modal-title">Power Off System?</div>
+    <div class="modal-desc">This will shut down all displays, cameras, and audio equipment in the ASMO Boardroom.</div>
+    <div class="modal-btns">
+      <button class="modal-cancel" onclick="document.getElementById('powerModal').classList.remove('show')">Cancel</button>
+      <button class="modal-confirm" onclick="systemPowerOff()">Power Off</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast container -->
+<div id="toast-container"></div>
+
+<!-- SIMPL Windows Engine + Device Modules -->
+<script src="js/simpl.js"></script>
+<script src="js/modules/display.js"></script>
+<script src="js/modules/matrix.js"></script>
+<script src="js/modules/camera.js"></script>
+<script src="js/modules/audio.js"></script>
+
+<script>
+  // ── Bootstrap ──
+  window.addEventListener('DOMContentLoaded', () => SIMPL.init());
+</script>
 </body>
 </html>

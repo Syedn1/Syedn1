@@ -1,266 +1,220 @@
 {
   "program": {
-    "name": "AMO Boardroom",
-    "version": "1.0.0",
+    "name": "ASMO Boardroom",
+    "version": "2.0.0",
     "processor": "CP4N",
-    "ip": "192.168.1.100",
-    "description": "SIMPL Windows control program for AMO Boardroom AV system"
+    "processor_ip": "192.168.10.100",
+    "description": "SIMPL Windows control program for ASMO Boardroom AV system",
+    "touch_panel": { "model": "TS-1070", "ipid": "03", "ip": "192.168.10.101" }
   },
-  "modules": [
-    {
-      "id": "TOUCH_PANEL_1",
-      "type": "TS-1070",
-      "label": "Chairman Touch Panel",
-      "location": "Table Area",
-      "ipid": "03",
-      "joins": {
-        "digital": { "1": "system_power", "2": "mode_presentation", "3": "mode_videoconf", "4": "mode_bluray", "5": "mode_wireless" },
-        "analog":  { "1": "vol_master", "2": "vol_ceiling", "3": "vol_conf" },
-        "serial":  { "1": "room_name_fb", "2": "footer_mode_fb" }
-      }
-    },
-    {
-      "id": "TOUCH_PANEL_2",
-      "type": "TS-770",
-      "label": "Shure Teams Meeting Controller",
-      "location": "Table Area",
-      "ipid": "04",
-      "joins": {
-        "digital": { "1": "conf_in_call", "2": "conf_cam_on", "3": "conf_mic_on", "4": "conf_share", "5": "conf_record" },
-        "analog":  { "1": "vol_conf" },
-        "serial":  { "1": "conf_status_fb" }
-      }
-    },
-    {
-      "id": "TOUCH_PANEL_3",
-      "type": "iPad via Crestron Mobile",
-      "label": "iPad System Control",
-      "location": "Table Area",
-      "ipid": "05",
-      "joins": {
-        "digital": { "1": "system_power", "2": "disp1_power", "3": "disp2_power" },
-        "analog":  { "1": "vol_master" },
-        "serial":  {}
-      }
-    },
+
+  "digital_joins": {
+    "1":  "SYSTEM_POWER",
+    "10": "D1_POWER_ON",   "11": "D1_POWER_OFF",
+    "12": "D1_SRC1",       "13": "D1_SRC2",  "14": "D1_SRC3",
+    "15": "D1_SRC4",       "16": "D1_SRC5",  "17": "D1_SRC6",
+    "20": "D2_POWER_ON",   "21": "D2_POWER_OFF",
+    "22": "D2_SRC1",       "23": "D2_SRC2",  "24": "D2_SRC3",
+    "25": "D2_SRC4",       "26": "D2_SRC5",  "27": "D2_SRC6",
+    "30": "MATRIX_MIRROR", "31": "MATRIX_INDEP", "32": "MATRIX_EXTEND",
+    "33": "LIFT_DEPLOY",   "34": "LIFT_RETRACT",
+    "40": "CAM1_SELECT",   "41": "CAM2_SELECT",
+    "42": "CAM_AUTO_TRACK",
+    "43": "CAM_PAN_L",     "44": "CAM_PAN_R",
+    "45": "CAM_TILT_U",    "46": "CAM_TILT_D",
+    "47": "CAM_ZOOM_IN",   "48": "CAM_ZOOM_OUT",
+    "49": "CAM_FOCUS_FAR", "50": "CAM_FOCUS_NEAR",
+    "51": "CAM_PRESET_1",  "52": "CAM_PRESET_2",
+    "53": "CAM_PRESET_3",  "54": "CAM_PRESET_4",
+    "55": "CAM_PRESET_SAVE",
+    "60": "MIC1_MUTE",     "61": "MIC2_MUTE",
+    "62": "ZONE1_ENABLE",  "63": "ZONE2_ENABLE",
+    "64": "ALL_MUTE",      "65": "NET_MUTE_BTN",
+    "66": "DSP_ENABLE",    "67": "ANIUSB_ENABLE",
+    "68": "AUDIO_PRE_MEETING", "69": "AUDIO_PRE_PRES",
+    "70": "AUDIO_PRE_VCALL",   "71": "AUDIO_PRE_MUTE",
+    "80": "VC_JOIN",       "81": "VC_LEAVE",
+    "82": "VC_MIC",        "83": "VC_CAM",
+    "84": "VC_SHARE",      "85": "VC_CHAT",   "86": "VC_PEOPLE",
+    "87": "VC_SHARE_CS1",  "88": "VC_SHARE_HDMI1",
+    "89": "VC_SHARE_HDMI2","90": "VC_SHARE_DELEG",
+    "91": "VC_LAYOUT_GAL", "92": "VC_LAYOUT_SPK",
+    "93": "VC_LAYOUT_CP",  "94": "VC_LAYOUT_FS"
+  },
+
+  "analog_joins": {
+    "1": "MASTER_VOL",
+    "2": "MIC1_GAIN",   "3": "MIC2_GAIN",
+    "4": "ZONE1_VOL",   "5": "ZONE2_VOL",
+    "6": "CAM_SPEED",
+    "7": "CAM_PAN_FB",  "8": "CAM_TILT_FB",  "9": "CAM_ZOOM_FB",
+    "10": "D1_SRC_FB",  "11": "D2_SRC_FB"
+  },
+
+  "serial_joins": {
+    "1": "MATRIX_CMD",
+    "2": "PTZ_VISCA_CMD",
+    "3": "D1_SRC_LABEL",
+    "4": "D2_SRC_LABEL",
+    "5": "CAM_PRESET_CMD",
+    "6": "DSP_CMD",
+    "7": "STATUS_FB"
+  },
+
+  "devices": [
     {
       "id": "DISPLAY_1",
-      "type": "NP-Display",
-      "label": "Wall Display 1 (Left)",
-      "location": "Wall Area",
-      "protocol": "RS-232 / IP",
-      "baudrate": 9600,
-      "signals": {
-        "power_on":  "disp1_power",
-        "power_off": "disp1_power_off",
-        "vol_up":    "disp1_vol_up",
-        "vol_dn":    "disp1_vol_dn",
-        "mute":      "disp1_mute",
-        "freeze":    "disp1_freeze",
-        "input_fb":  "disp1_input_fb"
-      }
+      "type": "Sony 98B253L BRAVIA Professional Display",
+      "label": "Display 1 – Left Wall",
+      "protocol": "RS-232 @ 9600 / IP (Bravia Professional API)",
+      "ip": "192.168.10.110",
+      "com_port": "COM1",
+      "baud": 9600,
+      "signal_in":  ["D1_POWER_ON","D1_POWER_OFF","D1_SRC1","D1_SRC2","D1_SRC3","D1_SRC4","D1_SRC5","D1_SRC6"],
+      "signal_out": ["D1_SRC_LABEL","D1_SRC_FB"]
     },
     {
       "id": "DISPLAY_2",
-      "type": "NP-Display",
-      "label": "Wall Display 2 (Right)",
-      "location": "Wall Area",
-      "protocol": "RS-232 / IP",
-      "baudrate": 9600,
-      "signals": {
-        "power_on":  "disp2_power",
-        "power_off": "disp2_power_off",
-        "vol_up":    "disp2_vol_up",
-        "vol_dn":    "disp2_vol_dn",
-        "mute":      "disp2_mute",
-        "freeze":    "disp2_freeze",
-        "input_fb":  "disp2_input_fb"
-      }
+      "type": "Sony 98B253L BRAVIA Professional Display",
+      "label": "Display 2 – Right Wall",
+      "protocol": "RS-232 @ 9600 / IP (Bravia Professional API)",
+      "ip": "192.168.10.111",
+      "com_port": "COM2",
+      "baud": 9600,
+      "signal_in":  ["D2_POWER_ON","D2_POWER_OFF","D2_SRC1","D2_SRC2","D2_SRC3","D2_SRC4","D2_SRC5","D2_SRC6"],
+      "signal_out": ["D2_SRC_LABEL","D2_SRC_FB"]
     },
     {
       "id": "MATRIX_1",
-      "type": "Crestron HDMI 4x4 Matrix Switcher",
-      "label": "4x4 HDMI Matrix",
-      "location": "AV Rack",
-      "protocol": "RS-232 / Ethernet",
-      "inputs": [
-        { "index": 1, "label": "Blu-ray Player" },
-        { "index": 2, "label": "Laptop 1 (Wireless Presentation)" },
-        { "index": 3, "label": "Laptop 2 (Wireless Presentation)" },
-        { "index": 4, "label": "PC (Table)" },
-        { "index": 5, "label": "Wireless AP 1 (Thin Client)" },
-        { "index": 6, "label": "Wireless AP 2 (Thin Client)" }
-      ],
-      "outputs": [
-        { "index": 1, "label": "Display 1" },
-        { "index": 2, "label": "Display 2" }
-      ],
-      "signals": {
-        "route_cmd":  "matrix_cmd",
-        "status_fb":  "matrix_status",
-        "route_out1": "matrix_out1_input",
-        "route_out2": "matrix_out2_input"
-      },
-      "command_format": "CL{output}I{input}!"
+      "type": "Crestron HD-MD-8X8-4K-E HDMI Matrix",
+      "label": "8×8 HDMI Matrix Switcher",
+      "protocol": "Ethernet / CIP",
+      "ip": "192.168.10.120",
+      "ipid": "08",
+      "inputs":  8,
+      "outputs": 8,
+      "signal_in":  ["MATRIX_CMD","MATRIX_MIRROR","MATRIX_INDEP","MATRIX_EXTEND"],
+      "signal_out": ["STATUS_FB"]
     },
     {
       "id": "CAMERA_1",
-      "type": "AVPTZ PTZ Camera",
-      "label": "AVPTZ Camera 1",
-      "location": "Wall Area",
-      "protocol": "VISCA over IP",
-      "ip": "192.168.1.110",
-      "port": 52381,
-      "signals": {
-        "selected":    "cam1_selected",
-        "pan_plus":    "ptz_pan+",
-        "pan_minus":   "ptz_pan-",
-        "tilt_plus":   "ptz_tilt+",
-        "tilt_minus":  "ptz_tilt-",
-        "zoom_plus":   "ptz_zoom+",
-        "zoom_minus":  "ptz_zoom-",
-        "preset_cmd":  "ptz_preset_cmd",
-        "preset_save": "ptz_preset_save_cmd",
-        "pan_fb":      "ptz_pan",
-        "tilt_fb":     "ptz_tilt",
-        "zoom_fb":     "ptz_zoom"
-      }
+      "type": "AVER CAM570 PTZ Camera",
+      "label": "Camera 1 – Left Wall",
+      "protocol": "VISCA over IP (UDP 52381) + HTTP REST",
+      "ip": "192.168.10.130",
+      "signal_in":  ["CAM1_SELECT","CAM_PAN_L","CAM_PAN_R","CAM_TILT_U","CAM_TILT_D",
+                     "CAM_ZOOM_IN","CAM_ZOOM_OUT","CAM_FOCUS_FAR","CAM_FOCUS_NEAR",
+                     "CAM_PRESET_1","CAM_PRESET_2","CAM_PRESET_3","CAM_PRESET_4",
+                     "CAM_PRESET_SAVE","CAM_AUTO_TRACK","CAM_SPEED"],
+      "signal_out": ["CAM_PAN_FB","CAM_TILT_FB","CAM_ZOOM_FB","PTZ_VISCA_CMD","CAM_PRESET_CMD"]
     },
     {
       "id": "CAMERA_2",
-      "type": "NKU PTZ Camera",
-      "label": "NKU Camera 2",
-      "location": "Wall Area",
-      "protocol": "VISCA over IP",
-      "ip": "192.168.1.111",
-      "port": 52381,
-      "signals": {
-        "selected":    "cam2_selected",
-        "pan_plus":    "ptz_pan+",
-        "pan_minus":   "ptz_pan-",
-        "tilt_plus":   "ptz_tilt+",
-        "tilt_minus":  "ptz_tilt-",
-        "zoom_plus":   "ptz_zoom+",
-        "zoom_minus":  "ptz_zoom-",
-        "preset_cmd":  "ptz_preset_cmd",
-        "preset_save": "ptz_preset_save_cmd"
-      }
+      "type": "AVER CAM570 PTZ Camera",
+      "label": "Camera 2 – Right Wall",
+      "protocol": "VISCA over IP (UDP 52381) + HTTP REST",
+      "ip": "192.168.10.131",
+      "signal_in":  ["CAM2_SELECT","CAM_PAN_L","CAM_PAN_R","CAM_TILT_U","CAM_TILT_D",
+                     "CAM_ZOOM_IN","CAM_ZOOM_OUT","CAM_FOCUS_FAR","CAM_FOCUS_NEAR",
+                     "CAM_PRESET_1","CAM_PRESET_2","CAM_PRESET_3","CAM_PRESET_4",
+                     "CAM_PRESET_SAVE","CAM_AUTO_TRACK","CAM_SPEED"],
+      "signal_out": ["CAM_PAN_FB","CAM_TILT_FB","CAM_ZOOM_FB"]
     },
     {
-      "id": "AUDIO_DSP",
-      "type": "Crestron DSP / SOLUXE INFRARED Ceiling Speakers",
-      "label": "Audio DSP",
-      "location": "AV Rack / Ceiling",
-      "protocol": "AES67 / RS-232",
-      "zones": [
-        { "id": "master",  "label": "Master Volume" },
-        { "id": "ceiling", "label": "Ceiling Speakers (SOLUXE)" },
-        { "id": "conf",    "label": "Conference Mic (Shure)" },
-        { "id": "hdmi",    "label": "HDMI Audio" }
-      ],
-      "signals": {
-        "vol_master":       "vol_master",
-        "vol_ceiling":      "vol_ceiling",
-        "vol_conf":         "vol_conf",
-        "vol_hdmi":         "vol_hdmi",
-        "mute_master":      "mute_master",
-        "mute_ceiling":     "mute_ceiling",
-        "mute_conf":        "mute_conf",
-        "mute_hdmi":        "mute_hdmi",
-        "afv_enable":       "afv_enable"
-      }
+      "id": "MXA920_A",
+      "type": "Shure MXA920 Ceiling Array Microphone",
+      "label": "MXA920 – Zone A (Conference End)",
+      "protocol": "Shure Control API TCP:2202",
+      "ip": "192.168.10.140",
+      "signal_in":  ["MIC1_MUTE","MIC1_GAIN","NET_MUTE_BTN"],
+      "signal_out": ["DSP_CMD"]
     },
     {
-      "id": "BLURAY_1",
-      "type": "Blu-ray Player",
-      "label": "Blu-ray Player",
-      "location": "AV Rack",
-      "protocol": "RS-232 / IR",
-      "signals": {
-        "power":   "bluray_power",
-        "play":    "bluray_play",
-        "pause":   "bluray_pause",
-        "stop":    "bluray_stop",
-        "eject":   "bluray_eject"
-      }
+      "id": "MXA920_B",
+      "type": "Shure MXA920 Ceiling Array Microphone",
+      "label": "MXA920 – Zone B (Presentation End)",
+      "protocol": "Shure Control API TCP:2202",
+      "ip": "192.168.10.141",
+      "signal_in":  ["MIC2_MUTE","MIC2_GAIN"],
+      "signal_out": ["DSP_CMD"]
     },
     {
-      "id": "DOOR_DISPLAY_1",
-      "type": "Entrance Display",
-      "label": "Door Display 1",
-      "location": "Doors Entrance",
-      "protocol": "IP / RS-232",
-      "signals": {
-        "power":  "door1_power",
-        "msg_fb": "door1_msg"
-      }
+      "id": "COMPUTE_DSP",
+      "type": "Shure Compute DSP",
+      "label": "Shure Compute DSP",
+      "protocol": "Shure Control API TCP:2202",
+      "ip": "192.168.10.142",
+      "signal_in":  ["MASTER_VOL","ALL_MUTE","DSP_ENABLE",
+                     "AUDIO_PRE_MEETING","AUDIO_PRE_PRES","AUDIO_PRE_VCALL","AUDIO_PRE_MUTE"],
+      "signal_out": ["DSP_CMD"]
     },
     {
-      "id": "DOOR_DISPLAY_2",
-      "type": "Entrance Display",
-      "label": "Door Display 2",
-      "location": "Doors Entrance",
-      "protocol": "IP / RS-232",
-      "signals": {
-        "power":  "door2_power",
-        "msg_fb": "door2_msg"
-      }
+      "id": "MXNGW_ZONE1",
+      "type": "Shure MXNGW-C Network Ceiling Speaker",
+      "label": "Zone 1 – Conference Side (×4)",
+      "protocol": "Shure Control API TCP:2202",
+      "ip": "192.168.10.150",
+      "signal_in":  ["ZONE1_ENABLE","ZONE1_VOL"],
+      "signal_out": ["DSP_CMD"]
+    },
+    {
+      "id": "MXNGW_ZONE2",
+      "type": "Shure MXNGW-C Network Ceiling Speaker",
+      "label": "Zone 2 – Presentation Side (×4)",
+      "protocol": "Shure Control API TCP:2202",
+      "ip": "192.168.10.151",
+      "signal_in":  ["ZONE2_ENABLE","ZONE2_VOL"],
+      "signal_out": ["DSP_CMD"]
+    },
+    {
+      "id": "ANIUSB",
+      "type": "Shure ANIUSB-MATRIX Audio Adapter",
+      "label": "Shure ANIUSB – Teams Audio Interface",
+      "protocol": "Shure Control API TCP:2202 / USB",
+      "ip": "192.168.10.152",
+      "signal_in":  ["ANIUSB_ENABLE","VC_MIC"],
+      "signal_out": ["DSP_CMD"]
+    },
+    {
+      "id": "IMXA_NMB",
+      "type": "Shure IMXA-NMB IntelliMix Network Mute Button",
+      "label": "Network Mute Button – Chairman Table",
+      "protocol": "Shure Control API TCP:2202",
+      "ip": "192.168.10.153",
+      "signal_in":  ["NET_MUTE_BTN"],
+      "signal_out": ["MIC1_MUTE","MIC2_MUTE"]
+    },
+    {
+      "id": "CLICKSHARE_1",
+      "type": "Barco ClickShare CX-30",
+      "label": "ClickShare CX-30 Wireless Presentation",
+      "protocol": "REST API / HDMI output to matrix",
+      "ip": "192.168.10.160",
+      "signal_in":  ["VC_SHARE_CS1","D1_SRC1","D2_SRC1"],
+      "signal_out": ["MATRIX_CMD"]
+    },
+    {
+      "id": "LIFT_1",
+      "type": "AX-22MF Motorised Monitor Lift",
+      "label": "AX-22MF Confidence Monitor Lift",
+      "protocol": "RS-232 / Relay",
+      "com_port": "COM3",
+      "signal_in":  ["LIFT_DEPLOY","LIFT_RETRACT"],
+      "signal_out": []
     }
   ],
-  "room_modes": {
-    "presentation": {
-      "label": "Presentation",
-      "actions": [
-        { "signal": "disp1_power",    "value": true  },
-        { "signal": "disp2_power",    "value": true  },
-        { "signal": "matrix_cmd",     "value": "CL1I2!" },
-        { "signal": "matrix_cmd",     "value": "CL2I2!" },
-        { "signal": "vol_master",     "value": 70    },
-        { "signal": "mute_master",    "value": false }
-      ]
-    },
-    "videoconf": {
-      "label": "Video Conference",
-      "actions": [
-        { "signal": "disp1_power",    "value": true  },
-        { "signal": "disp2_power",    "value": true  },
-        { "signal": "matrix_cmd",     "value": "CL1I5!" },
-        { "signal": "matrix_cmd",     "value": "CL2I5!" },
-        { "signal": "cam1_selected",  "value": true  },
-        { "signal": "vol_master",     "value": 75    },
-        { "signal": "vol_conf",       "value": 75    },
-        { "signal": "mute_conf",      "value": false }
-      ]
-    },
-    "bluray": {
-      "label": "Blu-ray",
-      "actions": [
-        { "signal": "disp1_power",    "value": true  },
-        { "signal": "disp2_power",    "value": true  },
-        { "signal": "matrix_cmd",     "value": "CL1I1!" },
-        { "signal": "matrix_cmd",     "value": "CL2I1!" },
-        { "signal": "bluray_power",   "value": true  },
-        { "signal": "vol_master",     "value": 80    }
-      ]
-    },
-    "wireless": {
-      "label": "Wireless Presentation",
-      "actions": [
-        { "signal": "disp1_power",    "value": true  },
-        { "signal": "disp2_power",    "value": true  },
-        { "signal": "matrix_cmd",     "value": "CL1I5!" },
-        { "signal": "matrix_cmd",     "value": "CL2I6!" },
-        { "signal": "vol_master",     "value": 70    }
-      ]
-    },
-    "standby": {
-      "label": "Standby",
-      "actions": [
-        { "signal": "disp1_power",    "value": false },
-        { "signal": "disp2_power",    "value": false },
-        { "signal": "mute_master",    "value": true  },
-        { "signal": "vol_master",     "value": 0     }
-      ]
-    }
+
+  "audio_presets": {
+    "meeting":      { "mic1_gain":75, "mic2_gain":68, "master_vol":70, "zone1":true,  "zone2":true  },
+    "presentation": { "mic1_gain":60, "mic2_gain":80, "master_vol":80, "zone1":true,  "zone2":true  },
+    "videocall":    { "mic1_gain":80, "mic2_gain":80, "master_vol":75, "zone1":true,  "zone2":false },
+    "mute":         { "mic1_gain":0,  "mic2_gain":0,  "master_vol":0,  "zone1":false, "zone2":false }
+  },
+
+  "camera_presets": {
+    "1": { "label":"Wide Room",   "pan":50, "tilt":50, "zoom":10 },
+    "2": { "label":"Presenter",   "pan":50, "tilt":45, "zoom":50 },
+    "3": { "label":"Whiteboard",  "pan":80, "tilt":40, "zoom":60 },
+    "4": { "label":"Door View",   "pan":10, "tilt":35, "zoom":20 }
   }
 }
