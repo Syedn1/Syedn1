@@ -1,0 +1,475 @@
+/*
+==============================================================================
+  ASMO Boardroom – Main SIMPL Windows Program Logic
+  File:       ASMO_Boardroom_Main.usp
+  Processor:  Crestron PRO3 (testing) / RMC4 (production)
+  Compiled:   SIMPL+ 3.x (PRO3) / SIMPL+ 4.x (RMC4)
+  Author:     AV Control Systems
+  Version:    2.0.0
+
+  HOW TO USE IN SIMPL WINDOWS:
+  1. Open SIMPL Windows → File → New Program
+  2. Select processor: PRO3 or RMC4
+  3. Add this .usp via Program → Insert SIMPL+ Module
+  4. Wire signals from the symbol to device modules
+  5. Compile → Upload to processor
+
+  SIGNAL MAP (matches CH5 panel Join numbers):
+    Digital 1   = System_Power
+    Digital 10  = Display1_Power_On
+    Digital 11  = Display1_Power_Off
+    Digital 12-17 = Display1_Source_1..6
+    Digital 20  = Display2_Power_On
+    Digital 21  = Display2_Power_Off
+    Digital 22-27 = Display2_Source_1..6
+    Digital 30  = Matrix_Mirror
+    Digital 31  = Matrix_Independent
+    Digital 32  = Matrix_Extend
+    Digital 33  = Lift_Deploy
+    Digital 34  = Lift_Retract
+    Digital 40  = Cam1_Select
+    Digital 41  = Cam2_Select
+    Digital 42  = Cam_AutoTrack
+    Digital 43-50 = PTZ controls
+    Digital 51-54 = Cam_Preset_1..4
+    Digital 55  = Cam_Preset_Save
+    Digital 60  = Mic1_Mute
+    Digital 61  = Mic2_Mute
+    Digital 62  = Zone1_Enable
+    Digital 63  = Zone2_Enable
+    Digital 64  = All_Mute
+    Digital 65  = Net_Mute_Btn
+    Digital 80  = VC_Join
+    Digital 81  = VC_Leave
+    Digital 82-86 = VC controls
+    Analog  1   = Master_Volume
+    Analog  2   = Mic1_Gain
+    Analog  3   = Mic2_Gain
+    Analog  6   = Cam_Speed
+    Serial  1   = Matrix_Cmd_Fb
+    Serial  7   = Status_Feedback
+==============================================================================
+*/
+
+#SYMBOL_NAME "ASMO_Boardroom_Main"
+#HINT "Main logic for ASMO Boardroom AV system"
+#CATEGORY "9" // General
+#DEFAULT_VOLATILE
+
+// ── CH5 PANEL DIGITAL INPUTS (from touch panel / joins) ────────────────────
+DIGITAL_INPUT  System_Power_Toggle;
+
+// Display 1 (Sony 98" Left)
+DIGITAL_INPUT  Disp1_Power_On, Disp1_Power_Off;
+DIGITAL_INPUT  Disp1_Src1, Disp1_Src2, Disp1_Src3;
+DIGITAL_INPUT  Disp1_Src4, Disp1_Src5, Disp1_Src6;
+
+// Display 2 (Sony 98" Right)
+DIGITAL_INPUT  Disp2_Power_On, Disp2_Power_Off;
+DIGITAL_INPUT  Disp2_Src1, Disp2_Src2, Disp2_Src3;
+DIGITAL_INPUT  Disp2_Src4, Disp2_Src5, Disp2_Src6;
+
+// Matrix modes + Lift
+DIGITAL_INPUT  Matrix_Mirror, Matrix_Independent, Matrix_Extend;
+DIGITAL_INPUT  Lift_Deploy, Lift_Retract;
+
+// Camera
+DIGITAL_INPUT  Cam1_Select, Cam2_Select;
+DIGITAL_INPUT  Cam_AutoTrack;
+DIGITAL_INPUT  Cam_Pan_Left, Cam_Pan_Right;
+DIGITAL_INPUT  Cam_Tilt_Up, Cam_Tilt_Down;
+DIGITAL_INPUT  Cam_Zoom_In, Cam_Zoom_Out;
+DIGITAL_INPUT  Cam_Focus_Far, Cam_Focus_Near;
+DIGITAL_INPUT  Cam_Preset_1, Cam_Preset_2, Cam_Preset_3, Cam_Preset_4;
+DIGITAL_INPUT  Cam_Preset_Save;
+
+// Audio
+DIGITAL_INPUT  Mic1_Mute_Toggle, Mic2_Mute_Toggle;
+DIGITAL_INPUT  Zone1_Toggle, Zone2_Toggle;
+DIGITAL_INPUT  All_Mute_Toggle;
+DIGITAL_INPUT  Net_Mute_Btn_Toggle;
+DIGITAL_INPUT  Audio_Preset_Meeting, Audio_Preset_Pres;
+DIGITAL_INPUT  Audio_Preset_VCall, Audio_Preset_Mute;
+
+// Video Conference
+DIGITAL_INPUT  VC_Join_Btn, VC_Leave_Btn;
+DIGITAL_INPUT  VC_Mic_Toggle, VC_Cam_Toggle;
+DIGITAL_INPUT  VC_Share_Toggle;
+
+// ── ANALOG INPUTS (from panel) ──────────────────────────────────────────────
+ANALOG_INPUT   Master_Volume_Level;  // 0-65535
+ANALOG_INPUT   Mic1_Gain_Level;
+ANALOG_INPUT   Mic2_Gain_Level;
+
+// ── DIGITAL OUTPUTS (to device modules / panel feedback) ───────────────────
+// System
+DIGITAL_OUTPUT System_On_FB;
+
+// Display feedback
+DIGITAL_OUTPUT Disp1_On_FB, Disp1_Off_FB;
+DIGITAL_OUTPUT Disp1_Src1_FB, Disp1_Src2_FB, Disp1_Src3_FB;
+DIGITAL_OUTPUT Disp1_Src4_FB, Disp1_Src5_FB, Disp1_Src6_FB;
+DIGITAL_OUTPUT Disp2_On_FB, Disp2_Off_FB;
+DIGITAL_OUTPUT Disp2_Src1_FB, Disp2_Src2_FB, Disp2_Src3_FB;
+DIGITAL_OUTPUT Disp2_Src4_FB, Disp2_Src5_FB, Disp2_Src6_FB;
+
+// Camera feedback
+DIGITAL_OUTPUT Cam1_Active_FB, Cam2_Active_FB;
+DIGITAL_OUTPUT Cam_Track_FB;
+
+// Audio feedback
+DIGITAL_OUTPUT Mic1_Mute_FB, Mic2_Mute_FB;
+DIGITAL_OUTPUT Zone1_On_FB, Zone2_On_FB;
+DIGITAL_OUTPUT All_Mute_FB;
+DIGITAL_OUTPUT Net_Mute_FB;
+
+// VC feedback
+DIGITAL_OUTPUT VC_InCall_FB;
+DIGITAL_OUTPUT VC_Mic_FB, VC_Cam_FB;
+
+// ── ANALOG OUTPUTS (to device modules) ─────────────────────────────────────
+ANALOG_OUTPUT  Master_Vol_Out;
+ANALOG_OUTPUT  Mic1_Gain_Out;
+ANALOG_OUTPUT  Mic2_Gain_Out;
+ANALOG_OUTPUT  Cam_Speed_Out;
+
+// ── STRING OUTPUTS (to device modules) ─────────────────────────────────────
+STRING_OUTPUT  Status_FB_Out;    // to panel serial join 7
+STRING_OUTPUT  Matrix_Route_Out; // to HD-MD-8x8 module
+
+// ── PARAMETERS ──────────────────────────────────────────────────────────────
+STRING_PARAMETER  Room_Name[32];
+INTEGER_PARAMETER Default_Master_Vol;  // 0-100 → scaled to 0-65535
+INTEGER_PARAMETER Auto_Shutoff_Mins;
+
+// ── INTERNAL STATE VARIABLES ─────────────────────────────────────────────────
+INTEGER g_SystemOn;
+INTEGER g_ActiveCam;      // 1 or 2
+INTEGER g_CamTrack;
+INTEGER g_MatrixMode;     // 0=mirror 1=independent 2=extend
+INTEGER g_Disp1On, g_Disp2On;
+INTEGER g_Disp1Src, g_Disp2Src;
+INTEGER g_Mic1Muted, g_Mic2Muted;
+INTEGER g_Zone1On, g_Zone2On;
+INTEGER g_AllMuted;
+INTEGER g_NetMute;
+INTEGER g_VCInCall;
+INTEGER g_VCMicOn, g_VCCamOn;
+LONG_INTEGER g_ShutoffTimer;
+
+// ── SYSTEM POWER ─────────────────────────────────────────────────────────────
+PUSH System_Power_Toggle
+{
+    g_SystemOn = !g_SystemOn;
+    System_On_FB = g_SystemOn;
+
+    IF (g_SystemOn)
+    {
+        // Power-on sequence
+        Master_Vol_Out = Default_Master_Vol * 655;
+        Status_FB_Out  = "System ON";
+    }
+    ELSE
+    {
+        // Power-off macro: shut everything down
+        Pulse(100, Disp1_Power_Off);
+        Pulse(100, Disp2_Power_Off);
+        Master_Vol_Out = 0;
+        g_Disp1On = 0;
+        g_Disp2On = 0;
+        Disp1_On_FB = 0;
+        Disp2_On_FB = 0;
+        Status_FB_Out = "System OFF";
+    }
+}
+
+// ── DISPLAY 1 CONTROL ────────────────────────────────────────────────────────
+PUSH Disp1_Power_On
+{
+    IF (g_SystemOn)
+    {
+        g_Disp1On   = 1;
+        Disp1_On_FB  = 1;
+        Disp1_Off_FB = 0;
+    }
+}
+
+PUSH Disp1_Power_Off
+{
+    g_Disp1On    = 0;
+    Disp1_On_FB  = 0;
+    Disp1_Off_FB = 1;
+    g_Disp1Src   = 0;
+    _ClearDisp1SourceFB();
+}
+
+// Source selection with matrix routing
+PUSH Disp1_Src1  { _RouteDisp1(1); }
+PUSH Disp1_Src2  { _RouteDisp1(2); }
+PUSH Disp1_Src3  { _RouteDisp1(3); }
+PUSH Disp1_Src4  { _RouteDisp1(4); }
+PUSH Disp1_Src5  { _RouteDisp1(5); }
+PUSH Disp1_Src6  { _RouteDisp1(6); }
+
+FUNCTION _RouteDisp1(INTEGER src)
+{
+    IF (!g_Disp1On) { RETURN; }
+    g_Disp1Src = src;
+    _ClearDisp1SourceFB();
+    SWITCH (src)
+    {
+        CASE (1): { Disp1_Src1_FB = 1; }
+        CASE (2): { Disp1_Src2_FB = 1; }
+        CASE (3): { Disp1_Src3_FB = 1; }
+        CASE (4): { Disp1_Src4_FB = 1; }
+        CASE (5): { Disp1_Src5_FB = 1; }
+        CASE (6): { Disp1_Src6_FB = 1; }
+    }
+    // Send route command to HD-MD-8x8
+    Matrix_Route_Out = "CL1I" + ITOA(src) + "!";
+
+    // Mirror mode: route same source to Display 2
+    IF (g_MatrixMode = 0) { _RouteDisp2(src); }
+}
+
+FUNCTION _ClearDisp1SourceFB()
+{
+    Disp1_Src1_FB = 0; Disp1_Src2_FB = 0; Disp1_Src3_FB = 0;
+    Disp1_Src4_FB = 0; Disp1_Src5_FB = 0; Disp1_Src6_FB = 0;
+}
+
+// ── DISPLAY 2 CONTROL ────────────────────────────────────────────────────────
+PUSH Disp2_Power_On
+{
+    IF (g_SystemOn)
+    {
+        g_Disp2On    = 1;
+        Disp2_On_FB  = 1;
+        Disp2_Off_FB = 0;
+    }
+}
+
+PUSH Disp2_Power_Off
+{
+    g_Disp2On    = 0;
+    Disp2_On_FB  = 0;
+    Disp2_Off_FB = 1;
+    g_Disp2Src   = 0;
+    _ClearDisp2SourceFB();
+}
+
+PUSH Disp2_Src1  { _RouteDisp2(1); }
+PUSH Disp2_Src2  { _RouteDisp2(2); }
+PUSH Disp2_Src3  { _RouteDisp2(3); }
+PUSH Disp2_Src4  { _RouteDisp2(4); }
+PUSH Disp2_Src5  { _RouteDisp2(5); }
+PUSH Disp2_Src6  { _RouteDisp2(6); }
+
+FUNCTION _RouteDisp2(INTEGER src)
+{
+    IF (!g_Disp2On) { RETURN; }
+    g_Disp2Src = src;
+    _ClearDisp2SourceFB();
+    SWITCH (src)
+    {
+        CASE (1): { Disp2_Src1_FB = 1; }
+        CASE (2): { Disp2_Src2_FB = 1; }
+        CASE (3): { Disp2_Src3_FB = 1; }
+        CASE (4): { Disp2_Src4_FB = 1; }
+        CASE (5): { Disp2_Src5_FB = 1; }
+        CASE (6): { Disp2_Src6_FB = 1; }
+    }
+    Matrix_Route_Out = "CL2I" + ITOA(src) + "!";
+}
+
+FUNCTION _ClearDisp2SourceFB()
+{
+    Disp2_Src1_FB = 0; Disp2_Src2_FB = 0; Disp2_Src3_FB = 0;
+    Disp2_Src4_FB = 0; Disp2_Src5_FB = 0; Disp2_Src6_FB = 0;
+}
+
+// ── MATRIX MODE ──────────────────────────────────────────────────────────────
+PUSH Matrix_Mirror      { g_MatrixMode = 0; }
+PUSH Matrix_Independent { g_MatrixMode = 1; }
+PUSH Matrix_Extend      { g_MatrixMode = 2; }
+
+// ── LIFT CONTROL (AX-22MF) ───────────────────────────────────────────────────
+PUSH Lift_Deploy  { Matrix_Route_Out = "LIFT_DEPLOY";  }
+PUSH Lift_Retract { Matrix_Route_Out = "LIFT_RETRACT"; }
+
+// ── CAMERA SELECTION ─────────────────────────────────────────────────────────
+PUSH Cam1_Select
+{
+    g_ActiveCam   = 1;
+    Cam1_Active_FB = 1;
+    Cam2_Active_FB = 0;
+}
+
+PUSH Cam2_Select
+{
+    g_ActiveCam   = 2;
+    Cam1_Active_FB = 0;
+    Cam2_Active_FB = 1;
+}
+
+PUSH Cam_AutoTrack
+{
+    g_CamTrack    = !g_CamTrack;
+    Cam_Track_FB  = g_CamTrack;
+}
+
+// ── AUDIO CONTROL ────────────────────────────────────────────────────────────
+PUSH Mic1_Mute_Toggle
+{
+    g_Mic1Muted = !g_Mic1Muted;
+    Mic1_Mute_FB = g_Mic1Muted;
+}
+
+PUSH Mic2_Mute_Toggle
+{
+    g_Mic2Muted = !g_Mic2Muted;
+    Mic2_Mute_FB = g_Mic2Muted;
+}
+
+PUSH Zone1_Toggle
+{
+    g_Zone1On  = !g_Zone1On;
+    Zone1_On_FB = g_Zone1On;
+}
+
+PUSH Zone2_Toggle
+{
+    g_Zone2On  = !g_Zone2On;
+    Zone2_On_FB = g_Zone2On;
+}
+
+PUSH All_Mute_Toggle
+{
+    g_AllMuted  = !g_AllMuted;
+    All_Mute_FB = g_AllMuted;
+    IF (g_AllMuted)
+    {
+        Master_Vol_Out = 0;
+    }
+    ELSE
+    {
+        Master_Vol_Out = Master_Volume_Level;
+    }
+}
+
+PUSH Net_Mute_Btn_Toggle
+{
+    g_NetMute  = !g_NetMute;
+    Net_Mute_FB = g_NetMute;
+}
+
+// Audio presets
+PUSH Audio_Preset_Meeting
+{
+    Mic1_Gain_Out  = 49151;   // 75%
+    Mic2_Gain_Out  = 44564;   // 68%
+    Master_Vol_Out = 45874;   // 70%
+    Zone1_On_FB = 1; Zone2_On_FB = 1;
+    g_Zone1On = 1;   g_Zone2On = 1;
+}
+
+PUSH Audio_Preset_Pres
+{
+    Mic1_Gain_Out  = 39321;   // 60%
+    Mic2_Gain_Out  = 52428;   // 80%
+    Master_Vol_Out = 52428;   // 80%
+    Zone1_On_FB = 1; Zone2_On_FB = 1;
+}
+
+PUSH Audio_Preset_VCall
+{
+    Mic1_Gain_Out  = 52428;   // 80%
+    Mic2_Gain_Out  = 52428;   // 80%
+    Master_Vol_Out = 49151;   // 75%
+    Zone1_On_FB = 1; Zone2_On_FB = 0;
+    g_Zone1On = 1;   g_Zone2On = 0;
+}
+
+PUSH Audio_Preset_Mute
+{
+    Mic1_Gain_Out  = 0;
+    Mic2_Gain_Out  = 0;
+    Master_Vol_Out = 0;
+    Zone1_On_FB = 0; Zone2_On_FB = 0;
+    g_Zone1On = 0;   g_Zone2On = 0;
+    g_AllMuted = 1;  All_Mute_FB = 1;
+}
+
+// Volume changes pass through
+CHANGE Master_Volume_Level
+{
+    IF (!g_AllMuted) { Master_Vol_Out = Master_Volume_Level; }
+}
+
+CHANGE Mic1_Gain_Level { Mic1_Gain_Out = Mic1_Gain_Level; }
+CHANGE Mic2_Gain_Level { Mic2_Gain_Out = Mic2_Gain_Level; }
+
+// ── VIDEO CONFERENCE ─────────────────────────────────────────────────────────
+PUSH VC_Join_Btn
+{
+    g_VCInCall    = 1;
+    VC_InCall_FB  = 1;
+    g_VCCamOn     = 1;
+    VC_Cam_FB     = 1;
+    Status_FB_Out = "Teams call active";
+}
+
+PUSH VC_Leave_Btn
+{
+    g_VCInCall    = 0;
+    VC_InCall_FB  = 0;
+    g_VCCamOn     = 0;
+    VC_Cam_FB     = 0;
+    g_VCMicOn     = 0;
+    VC_Mic_FB     = 0;
+    Status_FB_Out = "Call ended";
+}
+
+PUSH VC_Mic_Toggle
+{
+    g_VCMicOn = !g_VCMicOn;
+    VC_Mic_FB = g_VCMicOn;
+}
+
+PUSH VC_Cam_Toggle
+{
+    g_VCCamOn = !g_VCCamOn;
+    VC_Cam_FB = g_VCCamOn;
+}
+
+// ── STARTUP ──────────────────────────────────────────────────────────────────
+Function Main()
+{
+    g_SystemOn    = 1;
+    g_ActiveCam   = 1;
+    g_MatrixMode  = 0;  // mirror
+    g_Disp1On     = 1;
+    g_Disp2On     = 1;
+    g_Disp1Src    = 1;
+    g_Disp2Src    = 7;
+    g_Zone1On     = 1;
+    g_Zone2On     = 1;
+    g_VCInCall    = 1;
+    g_VCCamOn     = 1;
+    g_NetMute     = 1;
+
+    // Initial feedback to panel
+    System_On_FB   = 1;
+    Disp1_On_FB    = 1;
+    Disp2_On_FB    = 1;
+    Cam1_Active_FB = 1;
+    Zone1_On_FB    = 1;
+    Zone2_On_FB    = 1;
+    VC_InCall_FB   = 1;
+    VC_Cam_FB      = 1;
+    Net_Mute_FB    = 1;
+
+    Master_Vol_Out = Default_Master_Vol * 655;
+    Cam_Speed_Out  = 32767; // medium
+    Status_FB_Out  = Room_Name + " Ready";
+}

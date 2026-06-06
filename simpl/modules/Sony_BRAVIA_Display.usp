@@ -1,0 +1,267 @@
+/*
+==============================================================================
+  Sony BRAVIA 98B253L Professional Display Driver
+  File:     Sony_BRAVIA_Display.usp
+  Protocol: RS-232 @ 9600,8,N,1 + IP (IRCC-IP / Bravia Control API)
+
+  HOW TO ADD IN SIMPL WINDOWS:
+  1. Copy this file to your SIMPL Windows Modules folder:
+     C:\Program Files (x86)\Crestron\Simpl\Modules\
+  2. In SIMPL Windows: Program → Insert SIMPL+ Module
+  3. Select "Sony_BRAVIA_Display"
+  4. Wire COM port serial signals (or TCP/IP client signals)
+
+  RS-232 PIN WIRING (Sony BRAVIA RS-232C):
+    Pin 2 → TX  (from Crestron)
+    Pin 3 → RX  (to Crestron)
+    Pin 5 → GND
+    Baud: 9600, Data: 8, Parity: None, Stop: 1
+    Set DIP switch on display to enable RS-232 control
+
+  SIMPL WINDOWS WIRING EXAMPLE:
+    COM Module TX  → SerialOut (this module)
+    COM Module RX  → SerialIn  (this module)
+    Main Logic D-out → PowerOn / PowerOff / InputX_Select
+    Main Logic D-in  ← Power_On_FB / Power_Off_FB / InputX_FB
+==============================================================================
+*/
+
+#SYMBOL_NAME "Sony_BRAVIA_Display_v2"
+#HINT "Sony BRAVIA 98B253L RS-232/IP Control Driver"
+#CATEGORY "11"  // Video Displays
+#DEFAULT_VOLATILE
+#ENABLE_STACK_CHECKING
+#ENABLE_TRACE
+
+// ── DIGITAL INPUTS ───────────────────────────────────────────────────────────
+DIGITAL_INPUT  PowerOn;           // Pulse to power on
+DIGITAL_INPUT  PowerOff;          // Pulse to power off
+DIGITAL_INPUT  Input1_Select;     // ClickShare 1  → HDMI 1
+DIGITAL_INPUT  Input2_Select;     // HDMI 1        → HDMI 2
+DIGITAL_INPUT  Input3_Select;     // HDMI 2        → HDMI 3
+DIGITAL_INPUT  Input4_Select;     // Laptop USB-C  → HDMI 4
+DIGITAL_INPUT  Input5_Select;     // ClickShare 2  → HDMI 5
+DIGITAL_INPUT  Input6_Select;     // IPTV          → TV
+DIGITAL_INPUT  Volume_Up;
+DIGITAL_INPUT  Volume_Down;
+DIGITAL_INPUT  Mute_Toggle;
+DIGITAL_INPUT  Poll;              // Pulse to poll display status
+
+// ── ANALOG INPUTS ────────────────────────────────────────────────────────────
+ANALOG_INPUT   Volume_Level;      // 0-65535 → mapped to 0-100
+
+// ── DIGITAL OUTPUTS (feedback to panel) ──────────────────────────────────────
+DIGITAL_OUTPUT Power_On_FB;
+DIGITAL_OUTPUT Power_Off_FB;
+DIGITAL_OUTPUT Input1_FB, Input2_FB, Input3_FB;
+DIGITAL_OUTPUT Input4_FB, Input5_FB, Input6_FB;
+DIGITAL_OUTPUT Mute_FB;
+DIGITAL_OUTPUT Comms_OK;          // goes high when display responds
+
+// ── ANALOG OUTPUTS ───────────────────────────────────────────────────────────
+ANALOG_OUTPUT  Volume_FB;
+
+// ── STRING I/O ───────────────────────────────────────────────────────────────
+STRING_OUTPUT  SerialOut;         // wire to COM TX / TCP TX
+BUFFER_INPUT   SerialIn[256];     // wire to COM RX / TCP RX
+
+// ── PARAMETERS ───────────────────────────────────────────────────────────────
+STRING_PARAMETER  DisplayID[2];            // "01" for RS-232
+INTEGER_PARAMETER Poll_Interval_Sec;       // 0=disabled, 30=recommended
+INTEGER_PARAMETER Power_On_Warmup_MS;      // 5000 recommended
+
+// ── CONSTANTS ────────────────────────────────────────────────────────────────
+// Sony BRAVIA RS-232 command format: STX + COMMAND + ETX
+// Power: POWR 0001=on 0000=off
+// Input: INPT 0001xxxx (see input map below)
+// Volume: VOLU xxxx (0000-0063)
+// Query: append ???? suffix
+
+STRING_CONSTANT  STX$[1] = "\x02";
+STRING_CONSTANT  ETX$[1] = "\x03";
+
+// BRAVIA input command codes (INPT + 8-digit code)
+// External inputs use format: 0001xxxx
+STRING_CONSTANT  INP_HDMI1[12]  = "INPT00010001";
+STRING_CONSTANT  INP_HDMI2[12]  = "INPT00010002";
+STRING_CONSTANT  INP_HDMI3[12]  = "INPT00010003";
+STRING_CONSTANT  INP_HDMI4[12]  = "INPT00010004";
+STRING_CONSTANT  INP_HDMI5[12]  = "INPT00010005";
+STRING_CONSTANT  INP_TV[12]     = "INPT00000001";
+
+// ── INTERNAL VARS ────────────────────────────────────────────────────────────
+INTEGER g_Power;      // 1=on, 0=off
+INTEGER g_Input;      // 1-6
+INTEGER g_Muted;
+INTEGER g_Volume;
+INTEGER g_CommsOK;
+STRING  g_RxBuf[256];
+
+// ── HELPER: Build and send RS-232 command ────────────────────────────────────
+FUNCTION SendCmd(STRING cmd)
+{
+    SerialOut = STX$ + cmd + ETX$;
+}
+
+// ── HELPER: Build and send query ─────────────────────────────────────────────
+FUNCTION SendQuery(STRING cmd)
+{
+    SerialOut = STX$ + cmd + "????" + ETX$;
+}
+
+// ── POWER ────────────────────────────────────────────────────────────────────
+PUSH PowerOn
+{
+    SendCmd("POWR0001");
+    g_Power     = 1;
+    // Feedback after warmup delay
+    Wait(Power_On_Warmup_MS, powerOn_complete)
+    {
+        Power_On_FB  = 1;
+        Power_Off_FB = 0;
+        Comms_OK     = 1;
+        g_CommsOK    = 1;
+    }
+}
+
+PUSH PowerOff
+{
+    SendCmd("POWR0000");
+    g_Power      = 0;
+    Power_On_FB  = 0;
+    Power_Off_FB = 1;
+    g_Input      = 0;
+    _ClearInputFB();
+}
+
+// ── INPUT SELECTION ──────────────────────────────────────────────────────────
+PUSH Input1_Select { _SelectInput(1, INP_HDMI1); }
+PUSH Input2_Select { _SelectInput(2, INP_HDMI2); }
+PUSH Input3_Select { _SelectInput(3, INP_HDMI3); }
+PUSH Input4_Select { _SelectInput(4, INP_HDMI4); }
+PUSH Input5_Select { _SelectInput(5, INP_HDMI5); }
+PUSH Input6_Select { _SelectInput(6, INP_TV);    }
+
+FUNCTION _SelectInput(INTEGER num, STRING inpCmd)
+{
+    IF (!g_Power) { RETURN; }
+    g_Input = num;
+    SendCmd(inpCmd);
+    _ClearInputFB();
+    SWITCH (num)
+    {
+        CASE (1): { Input1_FB = 1; }
+        CASE (2): { Input2_FB = 1; }
+        CASE (3): { Input3_FB = 1; }
+        CASE (4): { Input4_FB = 1; }
+        CASE (5): { Input5_FB = 1; }
+        CASE (6): { Input6_FB = 1; }
+    }
+}
+
+FUNCTION _ClearInputFB()
+{
+    Input1_FB = 0; Input2_FB = 0; Input3_FB = 0;
+    Input4_FB = 0; Input5_FB = 0; Input6_FB = 0;
+}
+
+// ── VOLUME ───────────────────────────────────────────────────────────────────
+CHANGE Volume_Level
+{
+    // Scale 0-65535 → 0-100 → BRAVIA 0-63
+    INTEGER v;
+    v = (Volume_Level / 655) * 63 / 100;
+    g_Volume = v;
+    SendCmd("VOLU" + RIGHT("000" + ITOA(v), 4));
+    Volume_FB = Volume_Level;
+}
+
+PUSH Volume_Up   { SendCmd("RCKY00000041"); }  // BRAVIA IR code: Volume+
+PUSH Volume_Down { SendCmd("RCKY00000042"); }  // BRAVIA IR code: Volume-
+PUSH Mute_Toggle
+{
+    g_Muted  = !g_Muted;
+    Mute_FB  = g_Muted;
+    IF (g_Muted) { SendCmd("AMUT0001"); }
+    ELSE          { SendCmd("AMUT0000"); }
+}
+
+// ── STATUS POLLING ───────────────────────────────────────────────────────────
+PUSH Poll
+{
+    SendQuery("POWR");
+    Wait(500, poll_wait) { SendQuery("INPT"); }
+}
+
+// Periodic polling if interval set
+FUNCTION SetupPoll()
+{
+    IF (Poll_Interval_Sec > 0)
+    {
+        // SIMPL Windows Scheduler – call from Main()
+        Wait(Poll_Interval_Sec * 1000, poll_timer)
+        {
+            SendQuery("POWR");
+            SetupPoll();  // reschedule
+        }
+    }
+}
+
+// ── RX PARSER ────────────────────────────────────────────────────────────────
+// Sony BRAVIA response format: STX + COMMAND + VALUE + ETX
+CHANGE SerialIn
+{
+    STRING resp[64];
+    g_RxBuf = g_RxBuf + SerialIn;
+    CLEARSTRING(SerialIn);
+
+    // Look for complete message (STX..ETX)
+    WHILE (FIND("\x02", g_RxBuf) && FIND("\x03", g_RxBuf))
+    {
+        INTEGER sPos, ePos;
+        sPos = FIND("\x02", g_RxBuf);
+        ePos = FIND("\x03", g_RxBuf);
+        resp = MID(g_RxBuf, sPos + 1, ePos - sPos - 1);
+        g_RxBuf = RIGHT(g_RxBuf, LEN(g_RxBuf) - ePos);
+
+        g_CommsOK = 1;
+        Comms_OK  = 1;
+
+        IF (LEFT(resp, 4) = "POWR")
+        {
+            IF (RIGHT(resp, 4) = "0001") { Power_On_FB = 1; Power_Off_FB = 0; g_Power = 1; }
+            IF (RIGHT(resp, 4) = "0000") { Power_On_FB = 0; Power_Off_FB = 1; g_Power = 0; }
+        }
+        IF (LEFT(resp, 4) = "INPT")
+        {
+            STRING code[4];
+            code = RIGHT(resp, 4);
+            _ClearInputFB();
+            IF (code = "0001") { Input1_FB = 1; g_Input = 1; }
+            IF (code = "0002") { Input2_FB = 1; g_Input = 2; }
+            IF (code = "0003") { Input3_FB = 1; g_Input = 3; }
+            IF (code = "0004") { Input4_FB = 1; g_Input = 4; }
+            IF (code = "0005") { Input5_FB = 1; g_Input = 5; }
+        }
+        IF (LEFT(resp, 4) = "AMUT")
+        {
+            g_Muted = (RIGHT(resp, 4) = "0001");
+            Mute_FB = g_Muted;
+        }
+    }
+}
+
+// ── STARTUP ──────────────────────────────────────────────────────────────────
+Function Main()
+{
+    IF (DisplayID = "") { DisplayID = "01"; }
+    IF (Power_On_Warmup_MS = 0) { Power_On_Warmup_MS = 5000; }
+
+    g_Power   = 0;
+    g_Input   = 0;
+    g_Muted   = 0;
+    g_CommsOK = 0;
+
+    Power_Off_FB = 1;
+    SetupPoll();
+}

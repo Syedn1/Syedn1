@@ -1,0 +1,244 @@
+==============================================================================
+  HOW TO BUILD THE ASMO BOARDROOM PROGRAM IN SIMPL WINDOWS
+  Processor: PRO3 (testing)  /  RMC4 (production install)
+==============================================================================
+
+WHAT YOU NEED ON YOUR PC
+─────────────────────────
+1. Crestron SIMPL Windows  (download from crestron.com/developers)
+2. Crestron Device Database (install via SIMPL Windows → Help → Update)
+3. The .usp files from this folder:
+     simpl/ASMO_Boardroom_Main.usp
+     simpl/modules/Sony_BRAVIA_Display.usp
+     simpl/modules/AVER_CAM570_PTZ.usp
+     simpl/modules/Shure_MXA920_DSP.usp
+
+==============================================================================
+STEP 1 – CREATE NEW SIMPL WINDOWS PROGRAM
+==============================================================================
+  1. Open SIMPL Windows
+  2. File → New
+  3. Select your processor:
+       • PRO3  → Search "PRO3"  → Select "C3-PRO3"
+       • RMC4  → Search "RMC4"  → Select "MC4R" or "RMC4"
+  4. Click OK
+
+==============================================================================
+STEP 2 – COPY .USP MODULE FILES
+==============================================================================
+  Copy these files to:
+    C:\Program Files (x86)\Crestron\Simpl\Modules\SIMPLPlus\User\
+
+    ✓ ASMO_Boardroom_Main.usp
+    ✓ Sony_BRAVIA_Display.usp
+    ✓ AVER_CAM570_PTZ.usp
+    ✓ Shure_MXA920_DSP.usp
+
+==============================================================================
+STEP 3 – ADD TOUCH PANEL (TS-1070)
+==============================================================================
+  In SIMPL Windows Program View (right panel):
+  1. Right-click → Add Symbol
+  2. Search "TS-1070"  → double-click to add
+  3. Set IP-ID to 03
+  4. Wire digital/analog/serial signals (see JOIN MAP below)
+
+==============================================================================
+STEP 4 – ADD MAIN LOGIC MODULE
+==============================================================================
+  1. Right-click in Program View → Add SIMPL+ Module
+  2. Browse to: ASMO_Boardroom_Main.usp → Open
+  3. The module appears as a symbol with input/output pins
+  4. Wire TS-1070 joins to the module pins:
+
+  DIGITAL JOIN WIRING (TS-1070 → Main Module):
+  ─────────────────────────────────────────────
+  TS Join 10  → Main.Disp1_Power_On
+  TS Join 11  → Main.Disp1_Power_Off
+  TS Join 12  → Main.Disp1_Src1
+  TS Join 13  → Main.Disp1_Src2
+  TS Join 14  → Main.Disp1_Src3
+  TS Join 15  → Main.Disp1_Src4
+  TS Join 16  → Main.Disp1_Src5
+  TS Join 17  → Main.Disp1_Src6
+  TS Join 20  → Main.Disp2_Power_On
+  TS Join 21  → Main.Disp2_Power_Off
+  TS Join 22  → Main.Disp2_Src1
+  ... (continue for all joins – see simpl_program.json for full map)
+
+  DIGITAL JOIN WIRING (Main Module → TS-1070 feedback):
+  ──────────────────────────────────────────────────────
+  Main.Disp1_On_FB   → TS Join 10 (feedback)
+  Main.Disp1_Off_FB  → TS Join 11 (feedback)
+  Main.Disp1_Src1_FB → TS Join 12 (feedback)
+  ... etc.
+
+  ANALOG JOIN WIRING:
+  ───────────────────
+  TS Analog Join 1  (Master_Volume_Level) → Main.Master_Volume_Level
+  TS Analog Join 2  (Mic1_Gain_Level)     → Main.Mic1_Gain_Level
+  TS Analog Join 3  (Mic2_Gain_Level)     → Main.Mic2_Gain_Level
+  Main.Master_Vol_Out → TS Analog Join 1 (feedback)
+
+  SERIAL JOIN WIRING:
+  ───────────────────
+  Main.Status_FB_Out  → TS Serial Join 7
+
+==============================================================================
+STEP 5 – ADD DEVICE MODULES
+==============================================================================
+
+  ── DISPLAY 1 (Sony BRAVIA Left) ──────────────────────────────────────────
+  1. Add SIMPL+ Module → Sony_BRAVIA_Display.usp
+  2. Add COM symbol (for RS-232) or TCP/IP Client symbol (for IP control)
+  3. Wire:
+       Main.Disp1_On_FB  → SonyBRAVIA_1.PowerOn
+       Main.Disp1_Off_FB → SonyBRAVIA_1.PowerOff
+       Main.Disp1_Src1_FB → SonyBRAVIA_1.Input1_Select
+       ... etc.
+       COM1 TX ← SonyBRAVIA_1.SerialOut
+       COM1 RX → SonyBRAVIA_1.SerialIn
+  4. Set Parameters:
+       DisplayID          = "01"
+       Poll_Interval_Sec  = 30
+       Power_On_Warmup_MS = 5000
+  5. Set COM port (PRO3/RMC4 → COM1):
+       Baud: 9600, Data: 8, Parity: None, Stop: 1
+       Flow Control: None
+
+  ── DISPLAY 2 (Sony BRAVIA Right) ─────────────────────────────────────────
+  Same as Display 1, wire to Disp2 signals, use COM2
+
+  ── CAMERA 1 (AVER CAM570 Left) ───────────────────────────────────────────
+  1. Add SIMPL+ Module → AVER_CAM570_PTZ.usp
+  2. Add UDP Client symbol:
+       Remote IP:   192.168.10.130
+       Remote Port: 52381
+       Protocol:    UDP
+  3. Wire:
+       Main.Disp1_On_FB (cam active) → no direct wire needed
+       UDP TX ← AverCam570_1.SerialOut
+       UDP RX → AverCam570_1.SerialIn
+       Main.Cam_Pan_Left  → AverCam570_1.Pan_Left
+       Main.Cam_Pan_Right → AverCam570_1.Pan_Right
+       Main.Cam_Tilt_Up   → AverCam570_1.Tilt_Up
+       Main.Cam_Tilt_Down → AverCam570_1.Tilt_Down
+       Main.Cam_Zoom_In   → AverCam570_1.Zoom_In
+       Main.Cam_Zoom_Out  → AverCam570_1.Zoom_Out
+       Main.Cam_Preset_1  → AverCam570_1.Preset_1_Recall
+       ... etc.
+  4. Set Parameters:
+       Camera_IP          = "192.168.10.130"
+       Default_Pan_Speed  = 8
+       Default_Tilt_Speed = 6
+       Camera_Address     = 1
+
+  ── CAMERA 2 (AVER CAM570 Right) ──────────────────────────────────────────
+  Same as Camera 1, UDP to 192.168.10.131
+
+  ── AUDIO (Shure MXA920 + DSP + MXNGW-C) ─────────────────────────────────
+  1. Add SIMPL+ Module → Shure_MXA920_DSP.usp
+  2. Add TCP/IP Client symbol:
+       Remote IP:   192.168.10.142  (Compute DSP manages all devices)
+       Remote Port: 2202
+       Protocol:    TCP
+  3. Wire:
+       Main.Mic1_Mute_FB → ShureAudio.Mic1_Mute_Toggle
+       Main.Mic2_Mute_FB → ShureAudio.Mic2_Mute_Toggle
+       Main.Zone1_On_FB  → ShureAudio.Zone1_On
+       Main.Zone2_On_FB  → ShureAudio.Zone2_On
+       Main.All_Mute_FB  → ShureAudio.All_Mute_On/Off
+       Main.Master_Vol_Out → ShureAudio.Master_Volume
+       Main.Mic1_Gain_Out  → ShureAudio.Mic1_Gain
+       TCP TX ← ShureAudio.TCP_Out
+       TCP RX → ShureAudio.TCP_In
+  4. Set Parameters:
+       MXA920_A_DeviceID   = "MXA920_A"     (match device hostname)
+       MXA920_B_DeviceID   = "MXA920_B"
+       ComputeDSP_DeviceID = "IntelliMix300"
+       MXNGW_Z1_DeviceID   = "MXNGW_Z1"
+       MXNGW_Z2_DeviceID   = "MXNGW_Z2"
+       ANIUSB_DeviceID     = "ANIUSB"
+       NetMuteBtn_DeviceID = "IMXA_NMB"
+       Poll_Interval_Sec   = 30
+
+  ── MATRIX (Crestron HD-MD-8×8) ───────────────────────────────────────────
+  Use Crestron's built-in HD-MD driver from the Device Database:
+  1. Add Symbol → search "HD-MD 8X8 4K"
+  2. Wire Main.Matrix_Route_Out → HD-MD Route command input
+  3. Set IP address: 192.168.10.120, IP-ID: 08
+
+==============================================================================
+STEP 6 – COMPILE AND UPLOAD
+==============================================================================
+  PRO3 (testing):
+  ─────────────────
+  1. SIMPL Windows → Build → Compile (Ctrl+F12)
+  2. Fix any errors reported in the Output window
+  3. System → System Info → enter PRO3 IP address
+  4. System → Send Program (Ctrl+F4)
+  5. Processor reboots and runs the program
+
+  RMC4 (production):
+  ───────────────────
+  1. Same compile process
+  2. Change processor type: File → Change Control System → RMC4
+  3. Recompile (some SIMPL+ syntax differences may need updating)
+  4. Send Program to RMC4 IP address
+
+==============================================================================
+STEP 7 – UPLOAD THE TOUCH PANEL (index.html → TS-1070)
+==============================================================================
+  1. Open Crestron Toolbox
+  2. Tools → File Manager
+  3. Connect to TS-1070 IP address
+  4. Upload the entire project to: /user/
+       upload: index.html
+       upload: css/styles.css
+       upload: js/simpl.js
+       upload: js/ch5-connector.js
+       upload: js/modules/display.js
+       upload: js/modules/matrix.js
+       upload: js/modules/camera.js
+       upload: js/modules/audio.js
+  5. In TS-1070 setup: Set Start URL = http://localhost/user/index.html
+  6. The CH5 CrComLib is already built into the TS-1070 browser
+  7. Uncomment the CrComLib script tag in index.html before uploading
+
+==============================================================================
+PRO3 vs RMC4 DIFFERENCES
+==============================================================================
+  PRO3:
+    • 3-Series processor – use SIMPL Windows + SIMPL+ 3.x
+    • More COM/IR/relay ports available
+    • Good for testing: includes Ethernet, 8× COM, 8× IR
+    • Toolbox: use "C3-PRO3" in device database
+
+  RMC4:
+    • 4-Series processor – use SIMPL Windows 4 + SIMPL+ 4.x
+    • Also supports SIMPL# (C#) for advanced logic
+    • Smaller form factor – designed for rack/AV install
+    • Toolbox: use "MC4R" or "RMC4" in device database
+    • IMPORTANT: When switching from PRO3 to RMC4, run:
+        File → Change Control System → select RMC4
+        Then recompile – check for any deprecated symbols
+
+==============================================================================
+SIMPL WINDOWS SIGNAL NAMING CONVENTION USED IN THIS PROGRAM
+==============================================================================
+  Signals follow: {function}_{direction}
+    _Out  = from main logic out to device module (input to device)
+    _FB   = feedback from device back to panel
+    _Btn  = momentary push signal from panel
+
+  Example signal flow for Display 1 Power On:
+    Panel (TS Join 10) → Main.Disp1_Power_On [PUSH]
+                      → Main sets g_Disp1On = 1
+                      → Main outputs Disp1_On_FB = 1
+    SonyBRAVIA.PowerOn receives pulse
+                      → Sends RS-232 "\x02POWR0001\x03"
+                      → Display powers on
+                      → SonyBRAVIA.Power_On_FB = 1 (after warmup)
+                      → Feeds back to TS Join 10 feedback → button lights up
+
+==============================================================================

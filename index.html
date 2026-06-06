@@ -1489,15 +1489,31 @@
 <!-- Toast container -->
 <div id="toast-container"></div>
 
-<!-- SIMPL Windows Engine + Device Modules -->
+<!--
+  ══════════════════════════════════════════════════════════════════
+  CRESTRON CH5 LIBRARY  (auto-loaded on TS-1070 panel)
+  For simulation in a regular browser, this script is absent
+  and the SIMPL mock engine (simpl.js) runs standalone instead.
+  ══════════════════════════════════════════════════════════════════
+-->
+<!--
+  Uncomment this line ONLY when deploying on a real Crestron panel:
+  <script src="/crestron/ch5/cr-com-lib.js"></script>
+-->
+
+<!-- SIMPL Windows Signal Engine (mock for browser simulation) -->
 <script src="js/simpl.js"></script>
+
+<!-- Device Control Modules -->
 <script src="js/modules/display.js"></script>
 <script src="js/modules/matrix.js"></script>
 <script src="js/modules/camera.js"></script>
 <script src="js/modules/audio.js"></script>
 
+<!-- CH5 ↔ Processor Bridge (patches SIMPL when CrComLib is detected) -->
+<script src="js/ch5-connector.js"></script>
+
 <script>
-  // ── Bootstrap ──
   window.addEventListener('DOMContentLoaded', () => SIMPL.init());
 </script>
 </body>

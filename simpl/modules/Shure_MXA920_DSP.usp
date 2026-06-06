@@ -1,0 +1,432 @@
+/*
+==============================================================================
+  Shure MXA920 + Compute DSP + MXNGW-C Control Driver
+  File:     Shure_MXA920_DSP.usp
+  Protocol: Shure Control API over TCP (port 2202)
+  Command:  < SET {DEVICE_ID} {PROPERTY} {VALUE} >
+  Query:    < GET {DEVICE_ID} {PROPERTY} >
+  Response: < REP {DEVICE_ID} {PROPERTY} {VALUE} >
+
+  HOW TO ADD IN SIMPL WINDOWS:
+  1. Copy to Modules folder
+  2. Insert SIMPL+ Module → "Shure_MXA920_DSP"
+  3. Add a TCP/IP Client symbol for each Shure device on port 2202
+  4. Wire:
+       TCP Client TX  → SerialOut (this module)
+       TCP Client RX  → SerialIn  (this module)
+       TCP Connected  → (pulse to set connection state)
+
+  SHURE CONTROL API DEVICE IDs:
+  - MXA920: "MXA920" or serial number
+  - Compute DSP: "IntelliMix300" or "Compute_DSP"
+  - MXNGW-C speaker: device hostname or IP
+  - ANIUSB: "ANIUSB-MATRIX"
+  - IMXA-NMB: mute button hostname
+
+  TCP Connection: connect to device IP port 2202
+  One TCP client per device, OR use Shure's multi-device TCP gateway.
+==============================================================================
+*/
+
+#SYMBOL_NAME "Shure_MXA920_DSP_v2"
+#HINT "Shure MXA920 + Compute DSP + MXNGW-C Control API Driver"
+#CATEGORY "9"  // Audio
+#DEFAULT_VOLATILE
+#ENABLE_STACK_CHECKING
+#ENABLE_TRACE
+
+// ── DIGITAL INPUTS ───────────────────────────────────────────────────────────
+// Microphones (MXA920)
+DIGITAL_INPUT  Mic1_Mute_On,   Mic1_Mute_Off;
+DIGITAL_INPUT  Mic2_Mute_On,   Mic2_Mute_Off;
+DIGITAL_INPUT  Mic1_Mute_Toggle;
+DIGITAL_INPUT  Mic2_Mute_Toggle;
+
+// Network Mute Button (IMXA-NMB)
+DIGITAL_INPUT  NetMuteBtn_Enable, NetMuteBtn_Disable;
+
+// Speaker zones (MXNGW-C)
+DIGITAL_INPUT  Zone1_On, Zone1_Off;
+DIGITAL_INPUT  Zone2_On, Zone2_Off;
+
+// Master (Compute DSP)
+DIGITAL_INPUT  All_Mute_On, All_Mute_Off;
+DIGITAL_INPUT  DSP_Preset_Meeting;
+DIGITAL_INPUT  DSP_Preset_Presentation;
+DIGITAL_INPUT  DSP_Preset_VideoCall;
+DIGITAL_INPUT  DSP_Preset_Mute;
+
+// ANIUSB
+DIGITAL_INPUT  ANIUSB_Enable, ANIUSB_Disable;
+
+// Poll
+DIGITAL_INPUT  Poll_All;
+
+// ── ANALOG INPUTS ────────────────────────────────────────────────────────────
+ANALOG_INPUT   Mic1_Gain;          // 0-65535 → dB gain
+ANALOG_INPUT   Mic2_Gain;
+ANALOG_INPUT   Master_Volume;      // 0-65535
+ANALOG_INPUT   Zone1_Volume;
+ANALOG_INPUT   Zone2_Volume;
+
+// ── DIGITAL OUTPUTS ──────────────────────────────────────────────────────────
+DIGITAL_OUTPUT Mic1_Muted_FB;
+DIGITAL_OUTPUT Mic2_Muted_FB;
+DIGITAL_OUTPUT Zone1_On_FB;
+DIGITAL_OUTPUT Zone2_On_FB;
+DIGITAL_OUTPUT All_Muted_FB;
+DIGITAL_OUTPUT NetMute_Active_FB;
+DIGITAL_OUTPUT DSP_Online_FB;
+DIGITAL_OUTPUT ANIUSB_Online_FB;
+
+// ── ANALOG OUTPUTS ───────────────────────────────────────────────────────────
+ANALOG_OUTPUT  Mic1_Level_FB;    // 0-65535 input level meter
+ANALOG_OUTPUT  Mic2_Level_FB;
+
+// ── STRING I/O ───────────────────────────────────────────────────────────────
+STRING_OUTPUT  TCP_Out;          // to TCP/IP Client TX (Shure port 2202)
+BUFFER_INPUT   TCP_In[512];      // from TCP/IP Client RX
+
+// ── PARAMETERS ───────────────────────────────────────────────────────────────
+STRING_PARAMETER  MXA920_A_DeviceID[32];    // e.g. "MXA920_A" or serial
+STRING_PARAMETER  MXA920_B_DeviceID[32];
+STRING_PARAMETER  ComputeDSP_DeviceID[32];  // e.g. "IntelliMix300"
+STRING_PARAMETER  MXNGW_Z1_DeviceID[32];
+STRING_PARAMETER  MXNGW_Z2_DeviceID[32];
+STRING_PARAMETER  ANIUSB_DeviceID[32];
+STRING_PARAMETER  NetMuteBtn_DeviceID[32];
+INTEGER_PARAMETER Poll_Interval_Sec;        // 30 recommended
+
+// ── INTERNAL VARS ────────────────────────────────────────────────────────────
+INTEGER g_Mic1Muted, g_Mic2Muted;
+INTEGER g_Zone1On, g_Zone2On;
+INTEGER g_AllMuted;
+INTEGER g_NetMute;
+INTEGER g_DSPOnline, g_ANIUSBOnline;
+STRING  g_RxBuf[512];
+
+// ── HELPER: Send Shure Control API command ───────────────────────────────────
+// Format: < SET {DeviceID} {Property} {Value} >\r\n
+FUNCTION ShureSet(STRING devID, STRING prop, STRING val)
+{
+    TCP_Out = "< SET " + devID + " " + prop + " " + val + " >\r\n";
+}
+
+FUNCTION ShureGet(STRING devID, STRING prop)
+{
+    TCP_Out = "< GET " + devID + " " + prop + " >\r\n";
+}
+
+// Scale SIMPL analog 0-65535 to Shure dB string (-90 to +10)
+FUNCTION STRING ScaleGainToDB(INTEGER level)
+{
+    INTEGER db;
+    // 0-65535 → -10 to +60 dBFS gain range (typical preamp)
+    db = (level / 1310) - 10;      // -10 to +40 dB
+    IF (db < -10) { db = -10; }
+    IF (db > 40)  { db = 40; }
+    RETURN (ITOA(db));
+}
+
+// Scale SIMPL analog to volume percentage (0-100)
+FUNCTION STRING ScaleVol(INTEGER level)
+{
+    INTEGER pct;
+    pct = level / 655;
+    IF (pct > 100) { pct = 100; }
+    RETURN (ITOA(pct));
+}
+
+// ── MICROPHONE CONTROL ───────────────────────────────────────────────────────
+PUSH Mic1_Mute_On
+{
+    g_Mic1Muted = 1;
+    Mic1_Muted_FB = 1;
+    ShureSet(MXA920_A_DeviceID, "AUDIO_MUTE", "ON");
+}
+
+PUSH Mic1_Mute_Off
+{
+    g_Mic1Muted = 0;
+    Mic1_Muted_FB = 0;
+    ShureSet(MXA920_A_DeviceID, "AUDIO_MUTE", "OFF");
+}
+
+PUSH Mic1_Mute_Toggle
+{
+    g_Mic1Muted = !g_Mic1Muted;
+    Mic1_Muted_FB = g_Mic1Muted;
+    IF (g_Mic1Muted) { ShureSet(MXA920_A_DeviceID, "AUDIO_MUTE", "ON"); }
+    ELSE              { ShureSet(MXA920_A_DeviceID, "AUDIO_MUTE", "OFF"); }
+}
+
+PUSH Mic2_Mute_On
+{
+    g_Mic2Muted = 1;
+    Mic2_Muted_FB = 1;
+    ShureSet(MXA920_B_DeviceID, "AUDIO_MUTE", "ON");
+}
+
+PUSH Mic2_Mute_Off
+{
+    g_Mic2Muted = 0;
+    Mic2_Muted_FB = 0;
+    ShureSet(MXA920_B_DeviceID, "AUDIO_MUTE", "OFF");
+}
+
+PUSH Mic2_Mute_Toggle
+{
+    g_Mic2Muted = !g_Mic2Muted;
+    Mic2_Muted_FB = g_Mic2Muted;
+    IF (g_Mic2Muted) { ShureSet(MXA920_B_DeviceID, "AUDIO_MUTE", "ON"); }
+    ELSE              { ShureSet(MXA920_B_DeviceID, "AUDIO_MUTE", "OFF"); }
+}
+
+CHANGE Mic1_Gain
+{
+    ShureSet(MXA920_A_DeviceID, "PREAMP_GAIN", ScaleGainToDB(Mic1_Gain));
+}
+
+CHANGE Mic2_Gain
+{
+    ShureSet(MXA920_B_DeviceID, "PREAMP_GAIN", ScaleGainToDB(Mic2_Gain));
+}
+
+// ── NETWORK MUTE BUTTON ──────────────────────────────────────────────────────
+PUSH NetMuteBtn_Enable
+{
+    g_NetMute = 1;
+    NetMute_Active_FB = 1;
+    ShureSet(NetMuteBtn_DeviceID, "BUTTON_ENABLE", "ON");
+}
+
+PUSH NetMuteBtn_Disable
+{
+    g_NetMute = 0;
+    NetMute_Active_FB = 0;
+    ShureSet(NetMuteBtn_DeviceID, "BUTTON_ENABLE", "OFF");
+}
+
+// ── SPEAKER ZONES ────────────────────────────────────────────────────────────
+PUSH Zone1_On
+{
+    g_Zone1On = 1;
+    Zone1_On_FB = 1;
+    ShureSet(MXNGW_Z1_DeviceID, "SPEAKER_ENABLE", "ON");
+}
+
+PUSH Zone1_Off
+{
+    g_Zone1On = 0;
+    Zone1_On_FB = 0;
+    ShureSet(MXNGW_Z1_DeviceID, "SPEAKER_ENABLE", "OFF");
+}
+
+PUSH Zone2_On
+{
+    g_Zone2On = 1;
+    Zone2_On_FB = 1;
+    ShureSet(MXNGW_Z2_DeviceID, "SPEAKER_ENABLE", "ON");
+}
+
+PUSH Zone2_Off
+{
+    g_Zone2On = 0;
+    Zone2_On_FB = 0;
+    ShureSet(MXNGW_Z2_DeviceID, "SPEAKER_ENABLE", "OFF");
+}
+
+CHANGE Zone1_Volume
+{
+    ShureSet(MXNGW_Z1_DeviceID, "SPEAKER_VOLUME", ScaleVol(Zone1_Volume));
+}
+
+CHANGE Zone2_Volume
+{
+    ShureSet(MXNGW_Z2_DeviceID, "SPEAKER_VOLUME", ScaleVol(Zone2_Volume));
+}
+
+// ── MASTER VOLUME + ALL MUTE (Compute DSP) ───────────────────────────────────
+CHANGE Master_Volume
+{
+    IF (!g_AllMuted)
+    {
+        ShureSet(ComputeDSP_DeviceID, "MASTER_FADER", ScaleVol(Master_Volume));
+    }
+}
+
+PUSH All_Mute_On
+{
+    g_AllMuted = 1;
+    All_Muted_FB = 1;
+    ShureSet(ComputeDSP_DeviceID, "MUTE_ALL", "ON");
+}
+
+PUSH All_Mute_Off
+{
+    g_AllMuted = 0;
+    All_Muted_FB = 0;
+    ShureSet(ComputeDSP_DeviceID, "MUTE_ALL", "OFF");
+}
+
+// ── AUDIO PRESETS (Compute DSP) ───────────────────────────────────────────────
+PUSH DSP_Preset_Meeting
+{
+    ShureSet(ComputeDSP_DeviceID, "LOAD_PRESET", "MEETING");
+    // Apply gain values
+    ShureSet(MXA920_A_DeviceID, "PREAMP_GAIN", "20");   // 75%
+    ShureSet(MXA920_B_DeviceID, "PREAMP_GAIN", "17");   // 68%
+    ShureSet(ComputeDSP_DeviceID, "MASTER_FADER", "70");
+    Zone1_On_FB = 1; Zone2_On_FB = 1;
+    ShureSet(MXNGW_Z1_DeviceID, "SPEAKER_ENABLE", "ON");
+    ShureSet(MXNGW_Z2_DeviceID, "SPEAKER_ENABLE", "ON");
+}
+
+PUSH DSP_Preset_Presentation
+{
+    ShureSet(ComputeDSP_DeviceID, "LOAD_PRESET", "PRESENTATION");
+    ShureSet(MXA920_A_DeviceID, "PREAMP_GAIN", "14");   // 60%
+    ShureSet(MXA920_B_DeviceID, "PREAMP_GAIN", "22");   // 80%
+    ShureSet(ComputeDSP_DeviceID, "MASTER_FADER", "80");
+    Zone1_On_FB = 1; Zone2_On_FB = 1;
+}
+
+PUSH DSP_Preset_VideoCall
+{
+    ShureSet(ComputeDSP_DeviceID, "LOAD_PRESET", "VIDEOCALL");
+    ShureSet(MXA920_A_DeviceID, "PREAMP_GAIN", "22");
+    ShureSet(MXA920_B_DeviceID, "PREAMP_GAIN", "22");
+    ShureSet(ComputeDSP_DeviceID, "MASTER_FADER", "75");
+    Zone1_On_FB = 1; Zone2_On_FB = 0;
+    ShureSet(MXNGW_Z1_DeviceID, "SPEAKER_ENABLE", "ON");
+    ShureSet(MXNGW_Z2_DeviceID, "SPEAKER_ENABLE", "OFF");
+}
+
+PUSH DSP_Preset_Mute
+{
+    ShureSet(ComputeDSP_DeviceID, "MUTE_ALL", "ON");
+    ShureSet(MXA920_A_DeviceID, "AUDIO_MUTE", "ON");
+    ShureSet(MXA920_B_DeviceID, "AUDIO_MUTE", "ON");
+    ShureSet(MXNGW_Z1_DeviceID, "SPEAKER_ENABLE", "OFF");
+    ShureSet(MXNGW_Z2_DeviceID, "SPEAKER_ENABLE", "OFF");
+    Mic1_Muted_FB = 1; Mic2_Muted_FB = 1;
+    Zone1_On_FB = 0;   Zone2_On_FB = 0;
+    All_Muted_FB = 1;
+    g_Mic1Muted = 1; g_Mic2Muted = 1;
+    g_Zone1On = 0;   g_Zone2On = 0;
+    g_AllMuted = 1;
+}
+
+// ── ANIUSB ───────────────────────────────────────────────────────────────────
+PUSH ANIUSB_Enable
+{
+    g_ANIUSBOnline  = 1;
+    ANIUSB_Online_FB = 1;
+    ShureSet(ANIUSB_DeviceID, "DEVICE_ENABLE", "ON");
+}
+
+PUSH ANIUSB_Disable
+{
+    g_ANIUSBOnline  = 0;
+    ANIUSB_Online_FB = 0;
+}
+
+// ── POLLING ──────────────────────────────────────────────────────────────────
+PUSH Poll_All
+{
+    ShureGet(MXA920_A_DeviceID,   "AUDIO_MUTE");
+    ShureGet(MXA920_B_DeviceID,   "AUDIO_MUTE");
+    ShureGet(ComputeDSP_DeviceID, "MUTE_ALL");
+    ShureGet(ComputeDSP_DeviceID, "MASTER_FADER");
+    ShureGet(MXNGW_Z1_DeviceID,   "SPEAKER_ENABLE");
+    ShureGet(MXNGW_Z2_DeviceID,   "SPEAKER_ENABLE");
+}
+
+FUNCTION SetupPoll()
+{
+    IF (Poll_Interval_Sec > 0)
+    {
+        Wait(Poll_Interval_Sec * 1000, poll_cycle)
+        {
+            Pulse(100, Poll_All);
+            SetupPoll();
+        }
+    }
+}
+
+// ── RX PARSER ────────────────────────────────────────────────────────────────
+// Shure response: < REP {DeviceID} {Property} {Value} >
+CHANGE TCP_In
+{
+    STRING token[64];
+    g_RxBuf = g_RxBuf + TCP_In;
+    CLEARSTRING(TCP_In);
+
+    WHILE (FIND(">", g_RxBuf) && FIND("<", g_RxBuf))
+    {
+        INTEGER sPos, ePos;
+        STRING  msg[128];
+        sPos = FIND("<", g_RxBuf);
+        ePos = FIND(">", g_RxBuf);
+        msg  = MID(g_RxBuf, sPos, ePos - sPos + 1);
+        g_RxBuf = RIGHT(g_RxBuf, LEN(g_RxBuf) - ePos);
+        DSP_Online_FB = 1;
+        g_DSPOnline   = 1;
+
+        // Parse: < REP DeviceID Property Value >
+        IF (FIND("AUDIO_MUTE ON", msg))
+        {
+            IF (FIND(MXA920_A_DeviceID, msg)) { Mic1_Muted_FB = 1; g_Mic1Muted = 1; }
+            IF (FIND(MXA920_B_DeviceID, msg)) { Mic2_Muted_FB = 1; g_Mic2Muted = 1; }
+        }
+        IF (FIND("AUDIO_MUTE OFF", msg))
+        {
+            IF (FIND(MXA920_A_DeviceID, msg)) { Mic1_Muted_FB = 0; g_Mic1Muted = 0; }
+            IF (FIND(MXA920_B_DeviceID, msg)) { Mic2_Muted_FB = 0; g_Mic2Muted = 0; }
+        }
+        IF (FIND("MUTE_ALL ON",  msg)) { All_Muted_FB = 1; g_AllMuted = 1; }
+        IF (FIND("MUTE_ALL OFF", msg)) { All_Muted_FB = 0; g_AllMuted = 0; }
+        IF (FIND("SPEAKER_ENABLE ON",  msg))
+        {
+            IF (FIND(MXNGW_Z1_DeviceID, msg)) { Zone1_On_FB = 1; }
+            IF (FIND(MXNGW_Z2_DeviceID, msg)) { Zone2_On_FB = 1; }
+        }
+        IF (FIND("SPEAKER_ENABLE OFF", msg))
+        {
+            IF (FIND(MXNGW_Z1_DeviceID, msg)) { Zone1_On_FB = 0; }
+            IF (FIND(MXNGW_Z2_DeviceID, msg)) { Zone2_On_FB = 0; }
+        }
+    }
+}
+
+// ── STARTUP ──────────────────────────────────────────────────────────────────
+Function Main()
+{
+    // Default Device IDs if parameters not set
+    IF (MXA920_A_DeviceID  = "") { MXA920_A_DeviceID  = "MXA920_A"; }
+    IF (MXA920_B_DeviceID  = "") { MXA920_B_DeviceID  = "MXA920_B"; }
+    IF (ComputeDSP_DeviceID= "") { ComputeDSP_DeviceID= "IntelliMix300"; }
+    IF (MXNGW_Z1_DeviceID  = "") { MXNGW_Z1_DeviceID  = "MXNGW_Z1"; }
+    IF (MXNGW_Z2_DeviceID  = "") { MXNGW_Z2_DeviceID  = "MXNGW_Z2"; }
+    IF (ANIUSB_DeviceID    = "") { ANIUSB_DeviceID    = "ANIUSB"; }
+    IF (NetMuteBtn_DeviceID= "") { NetMuteBtn_DeviceID= "IMXA_NMB"; }
+
+    g_Mic1Muted  = 0;
+    g_Mic2Muted  = 0;
+    g_Zone1On    = 1;
+    g_Zone2On    = 1;
+    g_AllMuted   = 0;
+    g_NetMute    = 1;
+    g_DSPOnline  = 0;
+
+    Zone1_On_FB      = 1;
+    Zone2_On_FB      = 1;
+    NetMute_Active_FB = 1;
+
+    // Query initial state after 3s
+    Wait(3000, startup_poll)
+    {
+        Pulse(100, Poll_All);
+    }
+    SetupPoll();
+}

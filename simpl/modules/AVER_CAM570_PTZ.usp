@@ -1,0 +1,309 @@
+/*
+==============================================================================
+  AVER CAM570 PTZ Camera Driver
+  File:     AVER_CAM570_PTZ.usp
+  Protocol: VISCA over UDP (port 52381) via Crestron TCP/UDP Client symbol
+
+  HOW TO ADD IN SIMPL WINDOWS:
+  1. Copy to Modules folder
+  2. Insert SIMPL+ Module → "AVER_CAM570_PTZ"
+  3. Add a UDP Client symbol (Program View → Add Symbol → TCP/IP → UDP Client)
+  4. Wire:
+       UDP Client TX  → SerialOut (this module)
+       UDP Client RX  → SerialIn  (this module)
+       Set UDP Client: IP=camera_ip, Port=52381, Protocol=UDP
+
+  AVER CAM570 VISCA UDP Notes:
+  - Commands are raw VISCA bytes over UDP
+  - Sequence number bytes added for UDP VISCA (first 4 bytes of payload)
+  - Camera address byte is always 0x81 for camera #1
+
+  For Auto-Tracking: AVER CAM570 HTTP REST API
+  - PUT http://{ip}/api/v1/camera/tracking  body: {"mode":"presenter"}
+  - This module outputs an HTTP command string for a Crestron HTTP Client
+==============================================================================
+*/
+
+#SYMBOL_NAME "AVER_CAM570_PTZ_v2"
+#HINT "AVER CAM570 PTZ Camera – VISCA over UDP"
+#CATEGORY "12" // Cameras
+#DEFAULT_VOLATILE
+#ENABLE_STACK_CHECKING
+#ENABLE_TRACE
+
+// ── DIGITAL INPUTS ───────────────────────────────────────────────────────────
+DIGITAL_INPUT  Pan_Left,   Pan_Right;
+DIGITAL_INPUT  Tilt_Up,    Tilt_Down;
+DIGITAL_INPUT  Zoom_In,    Zoom_Out;
+DIGITAL_INPUT  Focus_Far,  Focus_Near;
+DIGITAL_INPUT  Focus_Auto;
+DIGITAL_INPUT  Preset_1_Recall, Preset_2_Recall;
+DIGITAL_INPUT  Preset_3_Recall, Preset_4_Recall;
+DIGITAL_INPUT  Preset_Save;       // saves to currently selected slot
+DIGITAL_INPUT  AutoTrack_Toggle;
+DIGITAL_INPUT  Home_Position;     // return to center
+
+// ── ANALOG INPUTS ────────────────────────────────────────────────────────────
+ANALOG_INPUT   Pan_Speed;         // 0-65535 → VISCA 0x01-0x18
+ANALOG_INPUT   Tilt_Speed;        // 0-65535 → VISCA 0x01-0x14
+ANALOG_INPUT   Preset_Save_Slot;  // 1-4
+
+// ── DIGITAL OUTPUTS ──────────────────────────────────────────────────────────
+DIGITAL_OUTPUT  AutoTrack_FB;
+DIGITAL_OUTPUT  Preset1_Active_FB, Preset2_Active_FB;
+DIGITAL_OUTPUT  Preset3_Active_FB, Preset4_Active_FB;
+DIGITAL_OUTPUT  Moving_FB;
+
+// ── ANALOG OUTPUTS ───────────────────────────────────────────────────────────
+ANALOG_OUTPUT   Pan_Pos_FB;     // 0-65535
+ANALOG_OUTPUT   Tilt_Pos_FB;
+ANALOG_OUTPUT   Zoom_Pos_FB;
+
+// ── STRING I/O ───────────────────────────────────────────────────────────────
+STRING_OUTPUT   SerialOut;       // UDP VISCA bytes
+BUFFER_INPUT    SerialIn[256];   // UDP VISCA response
+STRING_OUTPUT   HTTP_Cmd_Out;    // to HTTP Client for auto-track API
+
+// ── PARAMETERS ───────────────────────────────────────────────────────────────
+STRING_PARAMETER  Camera_IP[16];
+INTEGER_PARAMETER Default_Pan_Speed;    // 1-24, default 8
+INTEGER_PARAMETER Default_Tilt_Speed;  // 1-20, default 6
+INTEGER_PARAMETER Camera_Address;      // VISCA address: 1
+
+// ── CONSTANTS ────────────────────────────────────────────────────────────────
+// VISCA command byte sequences (sent as binary strings)
+// Format: <addr> 01 04 xx xx ... FF
+// addr = 0x80 + camera_address (0x81 for cam 1)
+
+STRING_CONSTANT  VISCA_STOP[9]        = "\x81\x01\x06\x01\x08\x06\x03\x03\xFF";
+STRING_CONSTANT  VISCA_ZOOM_STOP[5]   = "\x81\x01\x04\x07\x00\xFF";
+STRING_CONSTANT  VISCA_FOCUS_STOP[5]  = "\x81\x01\x04\x08\x00\xFF";
+STRING_CONSTANT  VISCA_FOCUS_AUTO[6]  = "\x81\x01\x04\x38\x02\xFF";
+STRING_CONSTANT  VISCA_HOME[4]        = "\x81\x01\x06\x04\xFF";
+
+// ── INTERNAL VARS ────────────────────────────────────────────────────────────
+INTEGER g_PanSpeed;     // VISCA byte 0x01-0x18
+INTEGER g_TiltSpeed;    // VISCA byte 0x01-0x14
+INTEGER g_AutoTrack;
+INTEGER g_ActivePreset;
+INTEGER g_SaveSlot;
+INTEGER g_SeqNum;       // UDP VISCA sequence counter
+
+// ── HELPER: Build UDP VISCA packet ───────────────────────────────────────────
+// UDP VISCA adds 8-byte header: type(2) + payload_len(2) + seq_num(4)
+FUNCTION SendVISCA(STRING payload)
+{
+    STRING header[8];
+    INTEGER pLen;
+    pLen   = LEN(payload);
+    g_SeqNum = g_SeqNum + 1;
+    // Header: type=0100 (command), length, sequence number
+    header = "\x01\x00" +
+             CHR(pLen / 256) + CHR(pLen MOD 256) +
+             "\x00\x00" +
+             CHR(g_SeqNum / 256) + CHR(g_SeqNum MOD 256);
+    SerialOut = header + payload;
+}
+
+// Scale SIMPL analog (0-65535) to VISCA speed byte
+FUNCTION INTEGER ScalePanSpeed()
+{
+    INTEGER s;
+    s = Pan_Speed / 2730;     // 0-24
+    IF (s < 1)  { s = 1; }
+    IF (s > 24) { s = 24; }
+    RETURN (s);
+}
+
+FUNCTION INTEGER ScaleTiltSpeed()
+{
+    INTEGER s;
+    s = Tilt_Speed / 3276;    // 0-20
+    IF (s < 1)  { s = 1; }
+    IF (s > 20) { s = 20; }
+    RETURN (s);
+}
+
+// ── PAN / TILT ───────────────────────────────────────────────────────────────
+PUSH Pan_Left
+{
+    INTEGER ps, ts;
+    ps = ScalePanSpeed(); ts = ScaleTiltSpeed();
+    // VISCA Pan Left: 81 01 06 01 VV WW 01 03 FF
+    SendVISCA("\x81\x01\x06\x01" + CHR(ps) + CHR(ts) + "\x01\x03\xFF");
+    Moving_FB = 1;
+}
+RELEASE Pan_Left   { SendVISCA(VISCA_STOP); Moving_FB = 0; }
+
+PUSH Pan_Right
+{
+    INTEGER ps, ts;
+    ps = ScalePanSpeed(); ts = ScaleTiltSpeed();
+    // VISCA Pan Right: 81 01 06 01 VV WW 02 03 FF
+    SendVISCA("\x81\x01\x06\x01" + CHR(ps) + CHR(ts) + "\x02\x03\xFF");
+    Moving_FB = 1;
+}
+RELEASE Pan_Right  { SendVISCA(VISCA_STOP); Moving_FB = 0; }
+
+PUSH Tilt_Up
+{
+    INTEGER ps, ts;
+    ps = ScalePanSpeed(); ts = ScaleTiltSpeed();
+    // VISCA Tilt Up: 81 01 06 01 VV WW 03 01 FF
+    SendVISCA("\x81\x01\x06\x01" + CHR(ps) + CHR(ts) + "\x03\x01\xFF");
+    Moving_FB = 1;
+}
+RELEASE Tilt_Up    { SendVISCA(VISCA_STOP); Moving_FB = 0; }
+
+PUSH Tilt_Down
+{
+    INTEGER ps, ts;
+    ps = ScalePanSpeed(); ts = ScaleTiltSpeed();
+    // VISCA Tilt Down: 81 01 06 01 VV WW 03 02 FF
+    SendVISCA("\x81\x01\x06\x01" + CHR(ps) + CHR(ts) + "\x03\x02\xFF");
+    Moving_FB = 1;
+}
+RELEASE Tilt_Down  { SendVISCA(VISCA_STOP); Moving_FB = 0; }
+
+// ── ZOOM ─────────────────────────────────────────────────────────────────────
+PUSH Zoom_In
+{
+    // VISCA Zoom Tele Standard: 81 01 04 07 2V FF  (speed V=0-7)
+    INTEGER zs;
+    zs = ScalePanSpeed() / 3;
+    IF (zs > 7) { zs = 7; }
+    SendVISCA("\x81\x01\x04\x07" + CHR(0x20 + zs) + "\xFF");
+    Moving_FB = 1;
+}
+RELEASE Zoom_In    { SendVISCA(VISCA_ZOOM_STOP); Moving_FB = 0; }
+
+PUSH Zoom_Out
+{
+    INTEGER zs;
+    zs = ScalePanSpeed() / 3;
+    IF (zs > 7) { zs = 7; }
+    SendVISCA("\x81\x01\x04\x07" + CHR(0x30 + zs) + "\xFF");
+    Moving_FB = 1;
+}
+RELEASE Zoom_Out   { SendVISCA(VISCA_ZOOM_STOP); Moving_FB = 0; }
+
+// ── FOCUS ────────────────────────────────────────────────────────────────────
+PUSH Focus_Auto  { SendVISCA(VISCA_FOCUS_AUTO); }
+
+PUSH Focus_Far
+{
+    SendVISCA("\x81\x01\x04\x08\x28\xFF");
+    Moving_FB = 1;
+}
+RELEASE Focus_Far   { SendVISCA(VISCA_FOCUS_STOP); Moving_FB = 0; }
+
+PUSH Focus_Near
+{
+    SendVISCA("\x81\x01\x04\x08\x38\xFF");
+    Moving_FB = 1;
+}
+RELEASE Focus_Near  { SendVISCA(VISCA_FOCUS_STOP); Moving_FB = 0; }
+
+// ── HOME ─────────────────────────────────────────────────────────────────────
+PUSH Home_Position { SendVISCA(VISCA_HOME); }
+
+// ── PRESETS ──────────────────────────────────────────────────────────────────
+// VISCA Preset Recall: 81 01 04 3F 02 PP FF (PP = preset number 0x00-based)
+// VISCA Preset Set:    81 01 04 3F 01 PP FF
+
+PUSH Preset_1_Recall { _RecallPreset(1); }
+PUSH Preset_2_Recall { _RecallPreset(2); }
+PUSH Preset_3_Recall { _RecallPreset(3); }
+PUSH Preset_4_Recall { _RecallPreset(4); }
+
+FUNCTION _RecallPreset(INTEGER num)
+{
+    g_ActivePreset = num;
+    SendVISCA("\x81\x01\x04\x3F\x02" + CHR(num - 1) + "\xFF");
+    _ClearPresetFB();
+    SWITCH (num)
+    {
+        CASE (1): { Preset1_Active_FB = 1; }
+        CASE (2): { Preset2_Active_FB = 1; }
+        CASE (3): { Preset3_Active_FB = 1; }
+        CASE (4): { Preset4_Active_FB = 1; }
+    }
+}
+
+PUSH Preset_Save
+{
+    INTEGER slot;
+    slot = Preset_Save_Slot;
+    IF (slot < 1) { slot = 1; }
+    IF (slot > 8) { slot = 8; }
+    SendVISCA("\x81\x01\x04\x3F\x01" + CHR(slot - 1) + "\xFF");
+    g_SaveSlot = slot;
+}
+
+FUNCTION _ClearPresetFB()
+{
+    Preset1_Active_FB = 0; Preset2_Active_FB = 0;
+    Preset3_Active_FB = 0; Preset4_Active_FB = 0;
+}
+
+// ── AUTO TRACKING ────────────────────────────────────────────────────────────
+// AVER CAM570 tracking via HTTP REST (output command string to HTTP client)
+PUSH AutoTrack_Toggle
+{
+    g_AutoTrack  = !g_AutoTrack;
+    AutoTrack_FB = g_AutoTrack;
+    IF (g_AutoTrack)
+    {
+        // Output HTTP PUT command string to Crestron HTTP Client symbol
+        HTTP_Cmd_Out = "PUT http://" + Camera_IP +
+                       "/api/v1/camera/tracking {\"mode\":\"presenter\"}";
+    }
+    ELSE
+    {
+        HTTP_Cmd_Out = "PUT http://" + Camera_IP +
+                       "/api/v1/camera/tracking {\"mode\":\"off\"}";
+    }
+}
+
+// ── RX PARSER ────────────────────────────────────────────────────────────────
+// UDP VISCA responses: ACK (90 4x FF), Completion (90 5x FF), Error (90 6x FF)
+CHANGE SerialIn
+{
+    STRING resp[32];
+    resp = SerialIn;
+    CLEARSTRING(SerialIn);
+    // Strip 8-byte UDP header
+    IF (LEN(resp) > 8)
+    {
+        resp = RIGHT(resp, LEN(resp) - 8);
+    }
+    // Check for completion (90 5x FF)
+    IF (LEN(resp) >= 3)
+    {
+        IF (ASC(LEFT(resp,1)) = 0x90 && (ASC(MID(resp,2,1)) & 0xF0) = 0x50)
+        {
+            // Command completed successfully
+        }
+    }
+}
+
+// ── STARTUP ──────────────────────────────────────────────────────────────────
+Function Main()
+{
+    IF (Default_Pan_Speed  = 0) { Default_Pan_Speed  = 8; }
+    IF (Default_Tilt_Speed = 0) { Default_Tilt_Speed = 6; }
+    IF (Camera_Address     = 0) { Camera_Address     = 1; }
+
+    g_PanSpeed     = Default_Pan_Speed;
+    g_TiltSpeed    = Default_Tilt_Speed;
+    g_AutoTrack    = 0;
+    g_ActivePreset = 1;
+    g_SeqNum       = 0;
+    g_SaveSlot     = 1;
+
+    // Move to home on startup
+    Wait(2000, cam_init)
+    {
+        SendVISCA(VISCA_HOME);
+    }
+}
