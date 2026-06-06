@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AMO Boardroom Control</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <!-- Touch Panel Shell -->
+  <div id="panel-shell">
+    <div id="panel-header">
+      <div id="room-name">AMO BOARDROOM</div>
+      <div id="header-right">
+        <div id="clock" class="header-info"></div>
+        <div id="system-status" class="status-dot offline" title="System Offline"></div>
+        <button id="btn-power" class="power-btn" onclick="SIMPL.toggleSystemPower()">
+          <span class="icon-power">⏻</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Page Navigation -->
+    <nav id="page-nav">
+      <button class="nav-btn active" data-page="home"     onclick="SIMPL.showPage('home')">Home</button>
+      <button class="nav-btn"        data-page="displays" onclick="SIMPL.showPage('displays')">Displays</button>
+      <button class="nav-btn"        data-page="camera"   onclick="SIMPL.showPage('camera')">Cameras</button>
+      <button class="nav-btn"        data-page="audio"    onclick="SIMPL.showPage('audio')">Audio</button>
+      <button class="nav-btn"        data-page="conf"     onclick="SIMPL.showPage('conf')">Conference</button>
+      <button class="nav-btn"        data-page="doors"    onclick="SIMPL.showPage('doors')">Doors</button>
+    </nav>
+
+    <!-- Page: Home -->
+    <div id="page-home" class="page active">
+      <div class="page-title">System Overview</div>
+      <div class="home-grid">
+        <div class="status-card" id="card-system">
+          <div class="card-icon">🏢</div>
+          <div class="card-label">System</div>
+          <div class="card-value" id="sys-power-label">STANDBY</div>
+        </div>
+        <div class="status-card" id="card-display1">
+          <div class="card-icon">🖥</div>
+          <div class="card-label">Display 1</div>
+          <div class="card-value" id="disp1-status">OFF</div>
+        </div>
+        <div class="status-card" id="card-display2">
+          <div class="card-icon">🖥</div>
+          <div class="card-label">Display 2</div>
+          <div class="card-value" id="disp2-status">OFF</div>
+        </div>
+        <div class="status-card" id="card-matrix">
+          <div class="card-icon">🔀</div>
+          <div class="card-label">Matrix</div>
+          <div class="card-value" id="matrix-status">IDLE</div>
+        </div>
+        <div class="status-card" id="card-cam">
+          <div class="card-icon">📹</div>
+          <div class="card-label">Cameras</div>
+          <div class="card-value" id="cam-status">STANDBY</div>
+        </div>
+        <div class="status-card" id="card-audio">
+          <div class="card-icon">🔊</div>
+          <div class="card-label">Audio</div>
+          <div class="card-value" id="audio-status">MUTED</div>
+        </div>
+      </div>
+
+      <div class="mode-section">
+        <div class="section-label">Room Modes</div>
+        <div class="mode-btns">
+          <button class="mode-btn" id="mode-presentation" onclick="SIMPL.setRoomMode('presentation')">
+            <span>📊</span> Presentation
+          </button>
+          <button class="mode-btn" id="mode-videoconf"    onclick="SIMPL.setRoomMode('videoconf')">
+            <span>📹</span> Video Conf
+          </button>
+          <button class="mode-btn" id="mode-bluray"       onclick="SIMPL.setRoomMode('bluray')">
+            <span>💿</span> Blu-ray
+          </button>
+          <button class="mode-btn" id="mode-wireless"     onclick="SIMPL.setRoomMode('wireless')">
+            <span>📶</span> Wireless
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Page: Displays -->
+    <div id="page-displays" class="page">
+      <div class="page-title">Display &amp; Matrix Control</div>
+      <div class="displays-layout">
+        <!-- Display 1 -->
+        <div class="display-panel">
+          <div class="display-header">
+            <span class="display-name">Display 1 (Left)</span>
+            <label class="toggle-switch">
+              <input type="checkbox" id="disp1-toggle" onchange="SIMPL.toggleDisplay(1, this.checked)" />
+              <span class="slider"></span>
+            </label>
+          </div>
+          <div class="display-preview" id="disp1-preview">
+            <div class="preview-label" id="disp1-input-label">— NO SIGNAL —</div>
+          </div>
+          <div class="input-grid">
+            <button class="input-btn" id="d1-src1" onclick="SIMPL.routeMatrix(1,1)">Blu-ray</button>
+            <button class="input-btn" id="d1-src2" onclick="SIMPL.routeMatrix(1,2)">Laptop 1</button>
+            <button class="input-btn" id="d1-src3" onclick="SIMPL.routeMatrix(1,3)">Laptop 2</button>
+            <button class="input-btn" id="d1-src4" onclick="SIMPL.routeMatrix(1,4)">PC</button>
+            <button class="input-btn" id="d1-src5" onclick="SIMPL.routeMatrix(1,5)">Wireless 1</button>
+            <button class="input-btn" id="d1-src6" onclick="SIMPL.routeMatrix(1,6)">Wireless 2</button>
+          </div>
+          <div class="display-controls">
+            <button class="ctrl-btn" onclick="SIMPL.displayCmd(1,'vol_up')">Vol +</button>
+            <button class="ctrl-btn" onclick="SIMPL.displayCmd(1,'vol_dn')">Vol −</button>
+            <button class="ctrl-btn" onclick="SIMPL.displayCmd(1,'mute')">Mute</button>
+            <button class="ctrl-btn" onclick="SIMPL.displayCmd(1,'freeze')">Freeze</button>
+          </div>
+        </div>
+
+        <!-- Display 2 -->
+        <div class="display-panel">
+          <div class="display-header">
+            <span class="display-name">Display 2 (Right)</span>
+            <label class="toggle-switch">
+              <input type="checkbox" id="disp2-toggle" onchange="SIMPL.toggleDisplay(2, this.checked)" />
+              <span class="slider"></span>
+            </label>
+          </div>
+          <div class="display-preview" id="disp2-preview">
+            <div class="preview-label" id="disp2-input-label">— NO SIGNAL —</div>
+          </div>
+          <div class="input-grid">
+            <button class="input-btn" id="d2-src1" onclick="SIMPL.routeMatrix(2,1)">Blu-ray</button>
+            <button class="input-btn" id="d2-src2" onclick="SIMPL.routeMatrix(2,2)">Laptop 1</button>
+            <button class="input-btn" id="d2-src3" onclick="SIMPL.routeMatrix(2,3)">Laptop 2</button>
+            <button class="input-btn" id="d2-src4" onclick="SIMPL.routeMatrix(2,4)">PC</button>
+            <button class="input-btn" id="d2-src5" onclick="SIMPL.routeMatrix(2,5)">Wireless 1</button>
+            <button class="input-btn" id="d2-src6" onclick="SIMPL.routeMatrix(2,6)">Wireless 2</button>
+          </div>
+          <div class="display-controls">
+            <button class="ctrl-btn" onclick="SIMPL.displayCmd(2,'vol_up')">Vol +</button>
+            <button class="ctrl-btn" onclick="SIMPL.displayCmd(2,'vol_dn')">Vol −</button>
+            <button class="ctrl-btn" onclick="SIMPL.displayCmd(2,'mute')">Mute</button>
+            <button class="ctrl-btn" onclick="SIMPL.displayCmd(2,'freeze')">Freeze</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Matrix Status Grid -->
+      <div class="matrix-section">
+        <div class="section-label">4×4 HDMI Matrix Routing</div>
+        <table class="matrix-table">
+          <thead>
+            <tr>
+              <th>Output / Input →</th>
+              <th>Blu-ray</th>
+              <th>Laptop 1</th>
+              <th>Laptop 2</th>
+              <th>PC</th>
+              <th>Wireless 1</th>
+              <th>Wireless 2</th>
+            </tr>
+          </thead>
+          <tbody id="matrix-body">
+            <tr>
+              <td>Display 1</td>
+              <td><div class="matrix-cell" id="mx-1-1"></div></td>
+              <td><div class="matrix-cell" id="mx-1-2"></div></td>
+              <td><div class="matrix-cell" id="mx-1-3"></div></td>
+              <td><div class="matrix-cell" id="mx-1-4"></div></td>
+              <td><div class="matrix-cell" id="mx-1-5"></div></td>
+              <td><div class="matrix-cell" id="mx-1-6"></div></td>
+            </tr>
+            <tr>
+              <td>Display 2</td>
+              <td><div class="matrix-cell" id="mx-2-1"></div></td>
+              <td><div class="matrix-cell" id="mx-2-2"></div></td>
+              <td><div class="matrix-cell" id="mx-2-3"></div></td>
+              <td><div class="matrix-cell" id="mx-2-4"></div></td>
+              <td><div class="matrix-cell" id="mx-2-5"></div></td>
+              <td><div class="matrix-cell" id="mx-2-6"></div></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Page: Camera -->
+    <div id="page-camera" class="page">
+      <div class="page-title">PTZ Camera Control</div>
+      <div class="camera-layout">
+        <!-- Camera selector -->
+        <div class="cam-selector">
+          <button class="cam-sel-btn active" id="camsel-1" onclick="SIMPL.selectCamera(1)">AVPTZ Camera 1</button>
+          <button class="cam-sel-btn"        id="camsel-2" onclick="SIMPL.selectCamera(2)">NKU Camera 2</button>
+        </div>
+
+        <!-- Viewport -->
+        <div class="cam-viewport" id="cam-viewport">
+          <div class="cam-overlay-label" id="cam-label">AVPTZ – Camera 1</div>
+          <div class="cam-ptz-indicator" id="cam-ptz-ind">PTZ READY</div>
+        </div>
+
+        <!-- PTZ joystick pad -->
+        <div class="ptz-pad">
+          <button class="ptz-btn tilt-up"   onmousedown="SIMPL.ptzMove('up',1)"   onmouseup="SIMPL.ptzStop()">▲</button>
+          <button class="ptz-btn tilt-dn"   onmousedown="SIMPL.ptzMove('down',1)" onmouseup="SIMPL.ptzStop()">▼</button>
+          <button class="ptz-btn pan-left"  onmousedown="SIMPL.ptzMove('left',1)" onmouseup="SIMPL.ptzStop()">◀</button>
+          <button class="ptz-btn pan-right" onmousedown="SIMPL.ptzMove('right',1)"onmouseup="SIMPL.ptzStop()">▶</button>
+          <div class="ptz-center">PTZ</div>
+          <button class="ptz-btn zoom-in"   onmousedown="SIMPL.ptzZoom('in')"    onmouseup="SIMPL.ptzStop()">+</button>
+          <button class="ptz-btn zoom-out"  onmousedown="SIMPL.ptzZoom('out')"   onmouseup="SIMPL.ptzStop()">−</button>
+        </div>
+
+        <!-- Presets -->
+        <div class="preset-section">
+          <div class="section-label">Camera Presets</div>
+          <div class="preset-grid">
+            <button class="preset-btn" onclick="SIMPL.recallPreset(1)">Wide Shot</button>
+            <button class="preset-btn" onclick="SIMPL.recallPreset(2)">Chairman</button>
+            <button class="preset-btn" onclick="SIMPL.recallPreset(3)">Presenter</button>
+            <button class="preset-btn" onclick="SIMPL.recallPreset(4)">Table Left</button>
+            <button class="preset-btn" onclick="SIMPL.recallPreset(5)">Table Right</button>
+            <button class="preset-btn" onclick="SIMPL.recallPreset(6)">Screen View</button>
+          </div>
+          <div class="preset-save-row">
+            <span class="section-label-sm">Save to Preset:</span>
+            <select id="preset-save-sel">
+              <option value="1">1 – Wide Shot</option>
+              <option value="2">2 – Chairman</option>
+              <option value="3">3 – Presenter</option>
+              <option value="4">4 – Table Left</option>
+              <option value="5">5 – Table Right</option>
+              <option value="6">6 – Screen View</option>
+            </select>
+            <button class="save-btn" onclick="SIMPL.savePreset()">Save</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Page: Audio -->
+    <div id="page-audio" class="page">
+      <div class="page-title">Audio Control</div>
+      <div class="audio-layout">
+        <!-- Master volume -->
+        <div class="audio-zone master">
+          <div class="zone-label">Master Volume</div>
+          <div class="volume-row">
+            <button class="vol-btn" onclick="SIMPL.adjustVolume('master',-5)">−</button>
+            <input type="range" class="vol-slider" id="vol-master" min="0" max="100" value="0"
+                   oninput="SIMPL.setVolume('master', this.value)" />
+            <button class="vol-btn" onclick="SIMPL.adjustVolume('master',5)">+</button>
+            <span class="vol-display" id="vol-master-val">0%</span>
+          </div>
+          <button class="mute-btn" id="mute-master" onclick="SIMPL.toggleMute('master')">MUTE ALL</button>
+        </div>
+
+        <!-- Zone controls -->
+        <div class="zone-grid">
+          <div class="audio-zone" id="zone-ceiling">
+            <div class="zone-label">Ceiling Speakers</div>
+            <div class="volume-row">
+              <button class="vol-btn" onclick="SIMPL.adjustVolume('ceiling',-5)">−</button>
+              <input type="range" class="vol-slider" id="vol-ceiling" min="0" max="100" value="0"
+                     oninput="SIMPL.setVolume('ceiling', this.value)" />
+              <button class="vol-btn" onclick="SIMPL.adjustVolume('ceiling',5)">+</button>
+              <span class="vol-display" id="vol-ceiling-val">0%</span>
+            </div>
+            <button class="mute-btn sm" id="mute-ceiling" onclick="SIMPL.toggleMute('ceiling')">Mute</button>
+          </div>
+
+          <div class="audio-zone" id="zone-conf">
+            <div class="zone-label">Conf Mic (Shure)</div>
+            <div class="volume-row">
+              <button class="vol-btn" onclick="SIMPL.adjustVolume('conf',-5)">−</button>
+              <input type="range" class="vol-slider" id="vol-conf" min="0" max="100" value="50"
+                     oninput="SIMPL.setVolume('conf', this.value)" />
+              <button class="vol-btn" onclick="SIMPL.adjustVolume('conf',5)">+</button>
+              <span class="vol-display" id="vol-conf-val">50%</span>
+            </div>
+            <button class="mute-btn sm" id="mute-conf" onclick="SIMPL.toggleMute('conf')">Mute</button>
+          </div>
+
+          <div class="audio-zone" id="zone-hdmi">
+            <div class="zone-label">HDMI Audio</div>
+            <div class="volume-row">
+              <button class="vol-btn" onclick="SIMPL.adjustVolume('hdmi',-5)">−</button>
+              <input type="range" class="vol-slider" id="vol-hdmi" min="0" max="100" value="0"
+                     oninput="SIMPL.setVolume('hdmi', this.value)" />
+              <button class="vol-btn" onclick="SIMPL.adjustVolume('hdmi',5)">+</button>
+              <span class="vol-display" id="vol-hdmi-val">0%</span>
+            </div>
+            <button class="mute-btn sm" id="mute-hdmi" onclick="SIMPL.toggleMute('hdmi')">Mute</button>
+          </div>
+        </div>
+
+        <!-- Audio Source selector -->
+        <div class="audio-source-section">
+          <div class="section-label">Audio Follow Video</div>
+          <div class="afv-btns">
+            <button class="afv-btn active" id="afv-on"  onclick="SIMPL.setAFV(true)">ON</button>
+            <button class="afv-btn"        id="afv-off" onclick="SIMPL.setAFV(false)">OFF</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Page: Conference -->
+    <div id="page-conf" class="page">
+      <div class="page-title">Video Conference – Teams</div>
+      <div class="conf-layout">
+        <div class="conf-status-bar">
+          <div class="conf-indicator" id="conf-state-dot"></div>
+          <span id="conf-state-label">Not in a call</span>
+        </div>
+
+        <div class="conf-controls">
+          <button class="conf-btn join"  id="btn-join-call"  onclick="SIMPL.confJoin()">Join Call</button>
+          <button class="conf-btn leave" id="btn-leave-call" onclick="SIMPL.confLeave()" disabled>End Call</button>
+        </div>
+
+        <div class="conf-grid">
+          <div class="conf-tile" id="tile-cam">
+            <div class="tile-icon">📹</div>
+            <div class="tile-label">Camera</div>
+            <button class="tile-toggle on" id="toggle-cam" onclick="SIMPL.confToggle('cam')">ON</button>
+          </div>
+          <div class="conf-tile" id="tile-mic">
+            <div class="tile-icon">🎤</div>
+            <div class="tile-label">Microphone</div>
+            <button class="tile-toggle on" id="toggle-mic" onclick="SIMPL.confToggle('mic')">ON</button>
+          </div>
+          <div class="conf-tile" id="tile-share">
+            <div class="tile-icon">🖥</div>
+            <div class="tile-label">Screen Share</div>
+            <button class="tile-toggle off" id="toggle-share" onclick="SIMPL.confToggle('share')">OFF</button>
+          </div>
+          <div class="conf-tile" id="tile-record">
+            <div class="tile-icon">⏺</div>
+            <div class="tile-label">Recording</div>
+            <button class="tile-toggle off" id="toggle-record" onclick="SIMPL.confToggle('record')">OFF</button>
+          </div>
+        </div>
+
+        <div class="camera-select-section">
+          <div class="section-label">Active Camera for Teams</div>
+          <div class="cam-conf-btns">
+            <button class="cam-conf-btn active" id="conf-cam1" onclick="SIMPL.confSelectCamera(1)">AVPTZ Cam 1</button>
+            <button class="cam-conf-btn"        id="conf-cam2" onclick="SIMPL.confSelectCamera(2)">NKU Cam 2</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Page: Doors -->
+    <div id="page-doors" class="page">
+      <div class="page-title">Door Entrance Displays</div>
+      <div class="doors-layout">
+        <div class="door-panel" id="door1-panel">
+          <div class="door-header">Entrance Display 1</div>
+          <div class="door-preview" id="door1-preview">
+            <div class="door-msg" id="door1-msg">AMO BOARDROOM</div>
+          </div>
+          <div class="door-controls">
+            <label class="toggle-switch">
+              <input type="checkbox" id="door1-toggle" onchange="SIMPL.toggleDoorDisplay(1, this.checked)" />
+              <span class="slider"></span>
+            </label>
+            <span class="toggle-label">Display On</span>
+          </div>
+          <div class="door-content">
+            <div class="section-label">Message</div>
+            <div class="door-msg-btns">
+              <button class="door-btn" onclick="SIMPL.setDoorMsg(1,'AMO BOARDROOM')">Room Name</button>
+              <button class="door-btn" onclick="SIMPL.setDoorMsg(1,'IN USE')">In Use</button>
+              <button class="door-btn" onclick="SIMPL.setDoorMsg(1,'MEETING IN PROGRESS')">Meeting</button>
+              <button class="door-btn" onclick="SIMPL.setDoorMsg(1,'AVAILABLE')">Available</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="door-panel" id="door2-panel">
+          <div class="door-header">Entrance Display 2</div>
+          <div class="door-preview" id="door2-preview">
+            <div class="door-msg" id="door2-msg">AMO BOARDROOM</div>
+          </div>
+          <div class="door-controls">
+            <label class="toggle-switch">
+              <input type="checkbox" id="door2-toggle" onchange="SIMPL.toggleDoorDisplay(2, this.checked)" />
+              <span class="slider"></span>
+            </label>
+            <span class="toggle-label">Display On</span>
+          </div>
+          <div class="door-content">
+            <div class="section-label">Message</div>
+            <div class="door-msg-btns">
+              <button class="door-btn" onclick="SIMPL.setDoorMsg(2,'AMO BOARDROOM')">Room Name</button>
+              <button class="door-btn" onclick="SIMPL.setDoorMsg(2,'IN USE')">In Use</button>
+              <button class="door-btn" onclick="SIMPL.setDoorMsg(2,'MEETING IN PROGRESS')">Meeting</button>
+              <button class="door-btn" onclick="SIMPL.setDoorMsg(2,'AVAILABLE')">Available</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div id="panel-footer">
+      <span id="footer-mode">Mode: Standby</span>
+      <span id="footer-ip">CP4N · 192.168.1.100</span>
+    </div>
+  </div>
+
+  <script src="js/simpl.js"></script>
+  <script src="js/modules/display.js"></script>
+  <script src="js/modules/matrix.js"></script>
+  <script src="js/modules/camera.js"></script>
+  <script src="js/modules/audio.js"></script>
+  <script>
+    SIMPL.init();
+  </script>
+</body>
+</html>

@@ -1,0 +1,266 @@
+{
+  "program": {
+    "name": "AMO Boardroom",
+    "version": "1.0.0",
+    "processor": "CP4N",
+    "ip": "192.168.1.100",
+    "description": "SIMPL Windows control program for AMO Boardroom AV system"
+  },
+  "modules": [
+    {
+      "id": "TOUCH_PANEL_1",
+      "type": "TS-1070",
+      "label": "Chairman Touch Panel",
+      "location": "Table Area",
+      "ipid": "03",
+      "joins": {
+        "digital": { "1": "system_power", "2": "mode_presentation", "3": "mode_videoconf", "4": "mode_bluray", "5": "mode_wireless" },
+        "analog":  { "1": "vol_master", "2": "vol_ceiling", "3": "vol_conf" },
+        "serial":  { "1": "room_name_fb", "2": "footer_mode_fb" }
+      }
+    },
+    {
+      "id": "TOUCH_PANEL_2",
+      "type": "TS-770",
+      "label": "Shure Teams Meeting Controller",
+      "location": "Table Area",
+      "ipid": "04",
+      "joins": {
+        "digital": { "1": "conf_in_call", "2": "conf_cam_on", "3": "conf_mic_on", "4": "conf_share", "5": "conf_record" },
+        "analog":  { "1": "vol_conf" },
+        "serial":  { "1": "conf_status_fb" }
+      }
+    },
+    {
+      "id": "TOUCH_PANEL_3",
+      "type": "iPad via Crestron Mobile",
+      "label": "iPad System Control",
+      "location": "Table Area",
+      "ipid": "05",
+      "joins": {
+        "digital": { "1": "system_power", "2": "disp1_power", "3": "disp2_power" },
+        "analog":  { "1": "vol_master" },
+        "serial":  {}
+      }
+    },
+    {
+      "id": "DISPLAY_1",
+      "type": "NP-Display",
+      "label": "Wall Display 1 (Left)",
+      "location": "Wall Area",
+      "protocol": "RS-232 / IP",
+      "baudrate": 9600,
+      "signals": {
+        "power_on":  "disp1_power",
+        "power_off": "disp1_power_off",
+        "vol_up":    "disp1_vol_up",
+        "vol_dn":    "disp1_vol_dn",
+        "mute":      "disp1_mute",
+        "freeze":    "disp1_freeze",
+        "input_fb":  "disp1_input_fb"
+      }
+    },
+    {
+      "id": "DISPLAY_2",
+      "type": "NP-Display",
+      "label": "Wall Display 2 (Right)",
+      "location": "Wall Area",
+      "protocol": "RS-232 / IP",
+      "baudrate": 9600,
+      "signals": {
+        "power_on":  "disp2_power",
+        "power_off": "disp2_power_off",
+        "vol_up":    "disp2_vol_up",
+        "vol_dn":    "disp2_vol_dn",
+        "mute":      "disp2_mute",
+        "freeze":    "disp2_freeze",
+        "input_fb":  "disp2_input_fb"
+      }
+    },
+    {
+      "id": "MATRIX_1",
+      "type": "Crestron HDMI 4x4 Matrix Switcher",
+      "label": "4x4 HDMI Matrix",
+      "location": "AV Rack",
+      "protocol": "RS-232 / Ethernet",
+      "inputs": [
+        { "index": 1, "label": "Blu-ray Player" },
+        { "index": 2, "label": "Laptop 1 (Wireless Presentation)" },
+        { "index": 3, "label": "Laptop 2 (Wireless Presentation)" },
+        { "index": 4, "label": "PC (Table)" },
+        { "index": 5, "label": "Wireless AP 1 (Thin Client)" },
+        { "index": 6, "label": "Wireless AP 2 (Thin Client)" }
+      ],
+      "outputs": [
+        { "index": 1, "label": "Display 1" },
+        { "index": 2, "label": "Display 2" }
+      ],
+      "signals": {
+        "route_cmd":  "matrix_cmd",
+        "status_fb":  "matrix_status",
+        "route_out1": "matrix_out1_input",
+        "route_out2": "matrix_out2_input"
+      },
+      "command_format": "CL{output}I{input}!"
+    },
+    {
+      "id": "CAMERA_1",
+      "type": "AVPTZ PTZ Camera",
+      "label": "AVPTZ Camera 1",
+      "location": "Wall Area",
+      "protocol": "VISCA over IP",
+      "ip": "192.168.1.110",
+      "port": 52381,
+      "signals": {
+        "selected":    "cam1_selected",
+        "pan_plus":    "ptz_pan+",
+        "pan_minus":   "ptz_pan-",
+        "tilt_plus":   "ptz_tilt+",
+        "tilt_minus":  "ptz_tilt-",
+        "zoom_plus":   "ptz_zoom+",
+        "zoom_minus":  "ptz_zoom-",
+        "preset_cmd":  "ptz_preset_cmd",
+        "preset_save": "ptz_preset_save_cmd",
+        "pan_fb":      "ptz_pan",
+        "tilt_fb":     "ptz_tilt",
+        "zoom_fb":     "ptz_zoom"
+      }
+    },
+    {
+      "id": "CAMERA_2",
+      "type": "NKU PTZ Camera",
+      "label": "NKU Camera 2",
+      "location": "Wall Area",
+      "protocol": "VISCA over IP",
+      "ip": "192.168.1.111",
+      "port": 52381,
+      "signals": {
+        "selected":    "cam2_selected",
+        "pan_plus":    "ptz_pan+",
+        "pan_minus":   "ptz_pan-",
+        "tilt_plus":   "ptz_tilt+",
+        "tilt_minus":  "ptz_tilt-",
+        "zoom_plus":   "ptz_zoom+",
+        "zoom_minus":  "ptz_zoom-",
+        "preset_cmd":  "ptz_preset_cmd",
+        "preset_save": "ptz_preset_save_cmd"
+      }
+    },
+    {
+      "id": "AUDIO_DSP",
+      "type": "Crestron DSP / SOLUXE INFRARED Ceiling Speakers",
+      "label": "Audio DSP",
+      "location": "AV Rack / Ceiling",
+      "protocol": "AES67 / RS-232",
+      "zones": [
+        { "id": "master",  "label": "Master Volume" },
+        { "id": "ceiling", "label": "Ceiling Speakers (SOLUXE)" },
+        { "id": "conf",    "label": "Conference Mic (Shure)" },
+        { "id": "hdmi",    "label": "HDMI Audio" }
+      ],
+      "signals": {
+        "vol_master":       "vol_master",
+        "vol_ceiling":      "vol_ceiling",
+        "vol_conf":         "vol_conf",
+        "vol_hdmi":         "vol_hdmi",
+        "mute_master":      "mute_master",
+        "mute_ceiling":     "mute_ceiling",
+        "mute_conf":        "mute_conf",
+        "mute_hdmi":        "mute_hdmi",
+        "afv_enable":       "afv_enable"
+      }
+    },
+    {
+      "id": "BLURAY_1",
+      "type": "Blu-ray Player",
+      "label": "Blu-ray Player",
+      "location": "AV Rack",
+      "protocol": "RS-232 / IR",
+      "signals": {
+        "power":   "bluray_power",
+        "play":    "bluray_play",
+        "pause":   "bluray_pause",
+        "stop":    "bluray_stop",
+        "eject":   "bluray_eject"
+      }
+    },
+    {
+      "id": "DOOR_DISPLAY_1",
+      "type": "Entrance Display",
+      "label": "Door Display 1",
+      "location": "Doors Entrance",
+      "protocol": "IP / RS-232",
+      "signals": {
+        "power":  "door1_power",
+        "msg_fb": "door1_msg"
+      }
+    },
+    {
+      "id": "DOOR_DISPLAY_2",
+      "type": "Entrance Display",
+      "label": "Door Display 2",
+      "location": "Doors Entrance",
+      "protocol": "IP / RS-232",
+      "signals": {
+        "power":  "door2_power",
+        "msg_fb": "door2_msg"
+      }
+    }
+  ],
+  "room_modes": {
+    "presentation": {
+      "label": "Presentation",
+      "actions": [
+        { "signal": "disp1_power",    "value": true  },
+        { "signal": "disp2_power",    "value": true  },
+        { "signal": "matrix_cmd",     "value": "CL1I2!" },
+        { "signal": "matrix_cmd",     "value": "CL2I2!" },
+        { "signal": "vol_master",     "value": 70    },
+        { "signal": "mute_master",    "value": false }
+      ]
+    },
+    "videoconf": {
+      "label": "Video Conference",
+      "actions": [
+        { "signal": "disp1_power",    "value": true  },
+        { "signal": "disp2_power",    "value": true  },
+        { "signal": "matrix_cmd",     "value": "CL1I5!" },
+        { "signal": "matrix_cmd",     "value": "CL2I5!" },
+        { "signal": "cam1_selected",  "value": true  },
+        { "signal": "vol_master",     "value": 75    },
+        { "signal": "vol_conf",       "value": 75    },
+        { "signal": "mute_conf",      "value": false }
+      ]
+    },
+    "bluray": {
+      "label": "Blu-ray",
+      "actions": [
+        { "signal": "disp1_power",    "value": true  },
+        { "signal": "disp2_power",    "value": true  },
+        { "signal": "matrix_cmd",     "value": "CL1I1!" },
+        { "signal": "matrix_cmd",     "value": "CL2I1!" },
+        { "signal": "bluray_power",   "value": true  },
+        { "signal": "vol_master",     "value": 80    }
+      ]
+    },
+    "wireless": {
+      "label": "Wireless Presentation",
+      "actions": [
+        { "signal": "disp1_power",    "value": true  },
+        { "signal": "disp2_power",    "value": true  },
+        { "signal": "matrix_cmd",     "value": "CL1I5!" },
+        { "signal": "matrix_cmd",     "value": "CL2I6!" },
+        { "signal": "vol_master",     "value": 70    }
+      ]
+    },
+    "standby": {
+      "label": "Standby",
+      "actions": [
+        { "signal": "disp1_power",    "value": false },
+        { "signal": "disp2_power",    "value": false },
+        { "signal": "mute_master",    "value": true  },
+        { "signal": "vol_master",     "value": 0     }
+      ]
+    }
+  }
+}
