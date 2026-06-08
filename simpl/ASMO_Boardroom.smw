@@ -3308,12 +3308,13 @@ SmVr=1234
 PrH=843
 CF=1
 n1I=1
-n2O=1
+n1O=2
 mI=1
 I1=3304
-mO=1
-tO=1
+mO=2
+tO=2
 O1=3089
+O2=3342
 mP=2
 P1=5d
 P2=100d
@@ -3821,6 +3822,13 @@ mC=3
 C1=24
 C2=30
 C3=31
+]
+
+[
+ObjTp=Sg
+H=3342
+SgTp=0
+Nm=Cam_Speed_At_Max
 ]
 
 [
@@ -4684,7 +4692,7 @@ SgTp=2
 ObjTp=Sg
 H=3089
 Nm=Cam_Speed_Out
-SgTp=2
+SgTp=0
 ]
 [
 ObjTp=Sg
