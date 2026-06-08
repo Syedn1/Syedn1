@@ -1,0 +1,332 @@
+==============================================================================
+  SIMPL LOGIC SYMBOLS – ASMO BOARDROOM v3
+  How the SIMPL Windows logic symbols were implemented in SIMPL+
+==============================================================================
+
+This document maps every SIMPL Windows logic symbol added in v3 to the
+specific code location in each .usp file so you can find and modify them.
+
+──────────────────────────────────────────────────────────────────────────────
+1. SR LATCH  (Set-Reset Flip-Flop)
+──────────────────────────────────────────────────────────────────────────────
+What it does:  Two separate inputs – one Sets the state HIGH (and holds it),
+               the other Resets it LOW.  More reliable than a toggle because
+               Set and Reset are independent signals.
+
+Where used:
+  ASMO_Boardroom_Main.usp
+    System_Power_On  →  SR Set   (line ~84)
+    System_Power_Off →  SR Reset (line ~91)
+    Both drive g_SystemOn and call the startup / shutdown SEQUENCE.
+
+  Shure_MXA920_DSP.usp
+    Mic1_Mute_On / Mic1_Mute_Off  (SR latch per mic channel)
+    All_Mute_On  / All_Mute_Off   (SR latch for master mute)
+
+  Sony_BRAVIA_Display.usp
+    g_Power:  Set on PowerOn, Reset on PowerOff or comms-loss RX.
+
+In SIMPL Windows:
+  Add an SR LATCH symbol, wire Set to the "On" button join,
+  Reset to the "Off" button join, Q output to the state signal.
+  In SIMPL+ it is simply two separate PUSH handlers for the two inputs.
+
+──────────────────────────────────────────────────────────────────────────────
+2. INTERLOCK  (Mutually Exclusive Signal Group)
+──────────────────────────────────────────────────────────────────────────────
+What it does:  In a group of N inputs, only ONE can be high at a time.
+               Pressing any input automatically releases all others.
+
+Where used:
+  ASMO_Boardroom_Main.usp
+    _InterlockDisp1Src(src)  – Display 1 source  (6-way)
+    _InterlockDisp2Src(src)  – Display 2 source  (6-way)
+    _InterlockMatrix(mode)   – Matrix mode        (3-way: Mirror/Indep/Extend)
+    _InterlockCamera(cam)    – Camera select      (2-way: Cam1/Cam2)
+    _InterlockAudioPreset(n) – Audio preset       (4-way: Meet/Pres/VCall/Mute)
+    _InterlockVCShare(src)   – VC share source    (3-way: CS1/HDMI1/HDMI2)
+
+  AVER_CAM570_PTZ.usp
+    _InterlockPreset(num)    – Preset active FB   (4-way: Preset 1–4)
+
+  Shure_MXA920_DSP.usp
+    _InterlockPreset(num)    – DSP preset FB      (4-way: Meet/Pres/VCall/Mute)
+
+SIMPL+ pattern (example, Display 1 source):
+  FUNCTION _InterlockDisp1Src(INTEGER src)
+  {
+      g_Disp1Src = src;
+      Disp1_Src1_FB = 0; Disp1_Src2_FB = 0; ...  // Clear ALL first
+      SWITCH (src)
+      {
+          CASE (1): { Disp1_Src1_FB = 1; }        // Set ONLY the active one
+          CASE (2): { Disp1_Src2_FB = 1; }
+          ...
+      }
+  }
+
+In SIMPL Windows:
+  Add an INTERLOCK symbol, connect all source buttons to its inputs.
+  Connect the Q outputs to the panel button feedback joins.
+
+──────────────────────────────────────────────────────────────────────────────
+3. ONE-SHOT  (Fixed-Width Pulse)
+──────────────────────────────────────────────────────────────────────────────
+What it does:  Output goes HIGH for a fixed time then automatically returns
+               LOW.  Used to trigger device module commands with a pulse
+               rather than a sustained signal.
+
+Where used:
+  ASMO_Boardroom_Main.usp
+    Disp1_Pwr_On_Cmd  / Disp1_Pwr_Off_Cmd  – 200 ms pulse to Sony module
+    Disp2_Pwr_On_Cmd  / Disp2_Pwr_Off_Cmd  – 200 ms pulse to Sony module
+    (Search for "Wait(200," in the file)
+
+  Sony_BRAVIA_Display.usp
+    Warmup guard after PowerOn:  g_Warming = 1 for Power_On_Warmup_MS,
+    blocks input selection until warmup ONE-SHOT fires.
+    (Search for "Wait(Power_On_Warmup_MS, warmup_done)")
+
+  AVER_CAM570_PTZ.usp
+    Home_Position:  Moving_FB high for 2000 ms ONE-SHOT.
+    Preset_Save:    Moving_FB high for 500 ms ONE-SHOT.
+    (Search for "Wait(2000, home_done)" and "Wait(500, preset_save_done)")
+
+  Shure_MXA920_DSP.usp
+    Zone1_Cmd_FB / Zone2_Cmd_FB: 200 ms confirmation pulse per zone change.
+    Mic1/Mic2 gain debounce:  150 ms ONE-SHOT before sending SET command.
+    (Search for "Wait(200, zone" and "Wait(150, mic")
+
+SIMPL+ pattern:
+  PUSH SomeButton
+  {
+      CmdOutput = 1;                      // Go HIGH
+      Wait(200, one_shot_label)
+      {
+          CmdOutput = 0;                  // Auto-release after 200 ms
+      }
+  }
+
+In SIMPL Windows:
+  Add a ONE-SHOT symbol, set the pulse width parameter, wire the input
+  to the button signal and the output to the device module command input.
+
+──────────────────────────────────────────────────────────────────────────────
+4. ANALOG RAMP  (Linear Timed Analog Transition)
+──────────────────────────────────────────────────────────────────────────────
+What it does:  Instead of jumping a volume/level to a new value instantly,
+               the ramp increments the value one step at a time on a timer,
+               producing a smooth fade or swell.
+
+Where used:
+  ASMO_Boardroom_Main.usp
+    _RampVolTo(target)    – ramps Master_Vol_Out, 1% per 30 ms
+    Called by:  Audio presets, All_Mute toggle, startup sequence, shutdown.
+
+  Sony_BRAVIA_Display.usp
+    _RampVolTo(target)    – ramps Sony display volume, 1 step per 40 ms
+    Called by:  Volume_Level CHANGE handler.
+
+  Shure_MXA920_DSP.usp
+    _RampVolTo(targetPct) – ramps DSP MASTER_FADER, 1% per 30 ms
+    Called by:  Master_Volume CHANGE, All_Mute_On/Off, DSP presets.
+
+SIMPL+ pattern (recursive Wait):
+  FUNCTION _DoRampStep()
+  {
+      IF (g_VolCurrent < g_VolTarget)
+      {
+          g_VolCurrent = g_VolCurrent + g_VolStep;
+          Master_Vol_Out = g_VolCurrent;
+          IF (g_VolCurrent < g_VolTarget)
+          {
+              Wait(g_VolStepMs, vol_ramp_tick) { _DoRampStep(); }
+          }
+      }
+      // (similar for decreasing direction)
+  }
+  FUNCTION _RampVolTo(INTEGER target)
+  {
+      g_VolTarget = target;
+      CancelWait(vol_ramp_tick);          // Cancel any running ramp first
+      Wait(g_VolStepMs, vol_ramp_tick) { _DoRampStep(); }
+  }
+
+In SIMPL Windows:
+  Add an ANALOG RAMP symbol, set Rate and Step parameters, wire the
+  analog input to the target value and the analog output to the device.
+
+──────────────────────────────────────────────────────────────────────────────
+5. STEPPER  (Analog Incrementer / Decrementer)
+──────────────────────────────────────────────────────────────────────────────
+What it does:  Two digital inputs (Up / Down) increment or decrement an
+               analog value by a fixed step per press.  Clamped to min/max.
+
+Where used:
+  ASMO_Boardroom_Main.usp
+    Vol_Up / Vol_Down      – Master volume, ±2% (1310 counts) per press
+    Cam_Speed_Up / Down    – Camera pan+tilt speed, ±2 VISCA units per press
+    (Search for "PUSH Vol_Up" and "PUSH Cam_Speed_Up")
+
+  AVER_CAM570_PTZ.usp
+    Speed_Up / Speed_Down  – Pan and tilt speeds ±Speed_Step_Size per press
+    (Search for "PUSH Speed_Up")
+
+SIMPL+ pattern:
+  PUSH Vol_Up
+  {
+      g_VolCurrent = g_VolCurrent + g_VolStepSize;   // Increment
+      IF (g_VolCurrent > 65535) { g_VolCurrent = 65535; }  // Clamp max
+      Master_Vol_Out = g_VolCurrent;
+  }
+  PUSH Vol_Down
+  {
+      IF (g_VolCurrent < g_VolStepSize) { g_VolCurrent = 0; }
+      ELSE { g_VolCurrent = g_VolCurrent - g_VolStepSize; }  // Clamp min
+      Master_Vol_Out = g_VolCurrent;
+  }
+
+In SIMPL Windows:
+  Add a COUNTER or RAMP STEPPER symbol, wire the Up/Down inputs to
+  the panel button joins, set step size and limits as parameters.
+
+──────────────────────────────────────────────────────────────────────────────
+6. TIMER  (Countdown / Recurring)
+──────────────────────────────────────────────────────────────────────────────
+What it does:  After a specified time of inactivity (countdown timer) OR
+               on a repeating cycle (recurring timer), execute logic.
+
+Where used:
+  ASMO_Boardroom_Main.usp
+    auto_shutoff_timer  – Idle countdown.  Restarted by _ResetShutoffTimer()
+                         on every button press.  On expiry: shutdown sequence.
+                         Length = Auto_Shutoff_Mins parameter.
+    device_poll_timer   – Recurring 30 s poll when system is on.
+
+  Sony_BRAVIA_Display.usp
+    poll_timer          – Recurring poll every Poll_Interval_Sec seconds.
+                         _StartPollTimer() re-arms it after each cycle.
+                         Stopped when PowerOff is received.
+
+  AVER_CAM570_PTZ.usp
+    stuck_watchdog      – 5 s watchdog: if Moving_FB still high (key stuck),
+                         send Stop automatically.  Restarted by _StartWatchdog().
+    track_heartbeat     – 60 s heartbeat while auto-track is active.
+
+  Shure_MXA920_DSP.usp
+    poll_timer          – Recurring poll every Poll_Interval_Sec seconds.
+    comms_watchdog      – Clears DSP_Online_FB if no response for 2× poll interval.
+
+SIMPL+ countdown pattern:
+  FUNCTION _ResetShutoffTimer()
+  {
+      RetimeWait(g_ShutoffMs, auto_shutoff_timer);  // Restart countdown
+  }
+  Wait(1000, auto_shutoff_timer)  // Initial short time; RetimeWait overrides it
+  {
+      _ShutdownSequence();
+  }
+
+SIMPL+ recurring pattern:
+  FUNCTION _StartPollTimer()
+  {
+      Wait(Poll_Interval_Sec * 1000, poll_timer)
+      {
+          DoPollAll();
+          _StartPollTimer();    // Re-arm: schedules the NEXT poll
+      }
+  }
+
+In SIMPL Windows:
+  Add a TIMER symbol, set the time parameter, wire the trigger input
+  (e.g. activity signal from panel) to the Reset input.  The Timeout
+  output drives your shutdown or poll logic.
+
+──────────────────────────────────────────────────────────────────────────────
+7. SEQUENCE  (Ordered Multi-Step with Delays)
+──────────────────────────────────────────────────────────────────────────────
+What it does:  Executes a series of actions in order with a delay between
+               each step.  Essential for AV startup/shutdown so devices
+               power on/off in the correct order and at the right times.
+
+Where used:
+  ASMO_Boardroom_Main.usp
+    _StartupSequence()  – 5 steps, total ~8 s:
+      Step 1 (0 ms)   : Set system ON, show "Starting up..."
+      Step 2 (500 ms) : Power-on pulse to both displays
+      Step 3 (5500 ms): Route default sources (after display warmup)
+      Step 4 (7000 ms): Enable audio zones, ramp volume to default
+      Step 5 (8000 ms): Show "Ready" status, start auto-shutoff timer
+
+    _ShutdownSequence() – 4 steps, total ~6 s:
+      Step 1 (0 ms)   : Ramp volume to zero
+      Step 2 (2000 ms): Power-off pulse to both displays, clear sources
+      Step 3 (5000 ms): Disable audio zones
+      Step 4 (6000 ms): Set system OFF, clear all state
+
+SIMPL+ nested Wait pattern:
+  FUNCTION _StartupSequence()
+  {
+      // Step 1 – immediate
+      Status_FB_Out = "Starting up...";
+      Wait(500, seq_step2)          // 500 ms delay to step 2
+      {
+          Disp1_Pwr_On_Cmd = 1;    // Power on display
+          Wait(200, d1_on_release) { Disp1_Pwr_On_Cmd = 0; }  // ONE-SHOT
+          Wait(5000, seq_step3)    // 5 s warmup to step 3
+          {
+              _InterlockDisp1Src(1);
+              Wait(1500, seq_step4)
+              {
+                  // ... audio enable ...
+              }
+          }
+      }
+  }
+
+In SIMPL Windows:
+  Add a SEQUENCER symbol and wire each step output to the appropriate
+  device command.  Set the step delay parameters.  Alternatively, chain
+  ONE-SHOT symbols (each output triggers the next symbol's input).
+
+==============================================================================
+  WIRING NOTES FOR NEW SIGNALS (v3)
+==============================================================================
+
+New outputs in ASMO_Boardroom_Main.usp that need wiring in SIMPL Windows:
+
+  Disp1_Pwr_On_Cmd   → SonyBRAVIA_1.PowerOn    (replaces direct Disp1_On_FB)
+  Disp1_Pwr_Off_Cmd  → SonyBRAVIA_1.PowerOff
+  Disp2_Pwr_On_Cmd   → SonyBRAVIA_2.PowerOn
+  Disp2_Pwr_Off_Cmd  → SonyBRAVIA_2.PowerOff
+
+  Matrix_Mirror_FB   → TS Join 30 feedback
+  Matrix_Indep_FB    → TS Join 31 feedback
+  Matrix_Extend_FB   → TS Join 32 feedback
+
+  Audio_Meeting_FB   → TS Join 68 feedback
+  Audio_Pres_FB      → TS Join 69 feedback
+  Audio_VCall_FB     → TS Join 70 feedback
+  Audio_Mute_Preset_FB → TS Join 71 feedback
+
+New inputs to wire:
+  System_Power_On  → TS Join 1 (or add separate On/Off buttons on panel)
+  System_Power_Off → TS Join 2
+  Vol_Up           → TS Join 56
+  Vol_Down         → TS Join 57
+  Cam_Speed_Up     → TS Join 58
+  Cam_Speed_Down   → TS Join 59
+
+New Sony BRAVIA output:
+  Warming_FB       → TS (optional: disable input buttons during warmup)
+
+New AVER CAM570 inputs/outputs:
+  Speed_Up / Speed_Down  → TS Joins for speed buttons
+  Pan_Speed_FB / Tilt_Speed_FB → TS Analog joins for speed display
+
+New Shure DSP outputs:
+  Preset_Meeting_FB / Preset_Pres_FB / Preset_VCall_FB / Preset_Mute_FB
+    → TS Join feedback for preset buttons
+  Zone1_Cmd_FB / Zone2_Cmd_FB → optional; can wire to status LEDs
+
+==============================================================================

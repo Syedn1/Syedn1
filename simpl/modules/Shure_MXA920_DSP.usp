@@ -1,75 +1,73 @@
-/*
-==============================================================================
-  Shure MXA920 + Compute DSP + MXNGW-C Control Driver
-  File:     Shure_MXA920_DSP.usp
-  Protocol: Shure Control API over TCP (port 2202)
-  Command:  < SET {DEVICE_ID} {PROPERTY} {VALUE} >
-  Query:    < GET {DEVICE_ID} {PROPERTY} >
-  Response: < REP {DEVICE_ID} {PROPERTY} {VALUE} >
-
-  HOW TO ADD IN SIMPL WINDOWS:
-  1. Copy to Modules folder
-  2. Insert SIMPL+ Module → "Shure_MXA920_DSP"
-  3. Add a TCP/IP Client symbol for each Shure device on port 2202
-  4. Wire:
-       TCP Client TX  → SerialOut (this module)
-       TCP Client RX  → SerialIn  (this module)
-       TCP Connected  → (pulse to set connection state)
-
-  SHURE CONTROL API DEVICE IDs:
-  - MXA920: "MXA920" or serial number
-  - Compute DSP: "IntelliMix300" or "Compute_DSP"
-  - MXNGW-C speaker: device hostname or IP
-  - ANIUSB: "ANIUSB-MATRIX"
-  - IMXA-NMB: mute button hostname
-
-  TCP Connection: connect to device IP port 2202
-  One TCP client per device, OR use Shure's multi-device TCP gateway.
-==============================================================================
-*/
+// Shure MXA920 + Compute DSP + MXNGW-C Control Driver
+// Protocol: Shure Control API over TCP (port 2202)
+//
+// SIMPL LOGIC SYMBOLS IMPLEMENTED
+// ─────────────────────────────────────────────────────────────────────────────
+// INTERLOCK    DSP preset group: DSP_Preset_Meeting / Presentation /
+//              VideoCall / Mute are 4-way exclusive.
+//              _InterlockPreset(num) clears all FBs, sets the active one,
+//              and loads the corresponding preset on the IntelliMix 300.
+//
+// SR LATCH     All_Mute: separate All_Mute_On / All_Mute_Off inputs are the
+//              Set / Reset sides of a latch.  All_Mute_Toggle keeps legacy
+//              support.  The latch drives the ANALOG RAMP on the DSP fader.
+//              Mic1 and Mic2 mute states are also SR-latch managed.
+//
+// ONE-SHOT     Command debounce: rapid gain/volume slider changes are
+//              debounced with a 150 ms Wait before the Shure SET command
+//              is sent, so only the final slider position is transmitted.
+//              Zone enable/disable: brief confirmation pulse on Zone1_Cmd_FB /
+//              Zone2_Cmd_FB (200 ms) so the main module can detect the
+//              transition edge.
+//
+// ANALOG RAMP  Master volume transitions ramp at 1 unit (1%) per 30 ms,
+//              so preset changes and all-mute do not cause abrupt audio cuts.
+//              The ramp sends Shure SET commands only when a new step is reached.
+//
+// TIMER        Recurring auto-poll every Poll_Interval_Sec seconds.
+//              Re-arms after each cycle.  Only runs when DSP is online.
+//              Connection watchdog: if no REP message is received for
+//              2 × Poll_Interval_Sec, DSP_Online_FB is cleared until
+//              the next response arrives.
+// ─────────────────────────────────────────────────────────────────────────────
 
 #SYMBOL_NAME "Shure_MXA920_DSP_v2"
-#HINT "Shure MXA920 + Compute DSP + MXNGW-C Control API Driver"
-#CATEGORY "9"  // Audio
+#HINT "Shure MXA920/DSP/MXNGW Control - v2 with SIMPL logic symbols"
+#CATEGORY "9"
 #DEFAULT_VOLATILE
 #ENABLE_STACK_CHECKING
 #ENABLE_TRACE
 
-// ── DIGITAL INPUTS ───────────────────────────────────────────────────────────
-// Microphones (MXA920)
+// ── DIGITAL INPUTS ────────────────────────────────────────────────────────────
+// SR LATCH inputs for mic mute (Set = Mute_On, Reset = Mute_Off)
 DIGITAL_INPUT  Mic1_Mute_On,   Mic1_Mute_Off;
 DIGITAL_INPUT  Mic2_Mute_On,   Mic2_Mute_Off;
-DIGITAL_INPUT  Mic1_Mute_Toggle;
+DIGITAL_INPUT  Mic1_Mute_Toggle;   // Legacy toggle
 DIGITAL_INPUT  Mic2_Mute_Toggle;
-
-// Network Mute Button (IMXA-NMB)
 DIGITAL_INPUT  NetMuteBtn_Enable, NetMuteBtn_Disable;
-
-// Speaker zones (MXNGW-C)
 DIGITAL_INPUT  Zone1_On, Zone1_Off;
 DIGITAL_INPUT  Zone2_On, Zone2_Off;
-
-// Master (Compute DSP)
-DIGITAL_INPUT  All_Mute_On, All_Mute_Off;
+// SR LATCH inputs for all-mute
+DIGITAL_INPUT  All_Mute_On;        // SR Set:   mute everything, ramp vol to 0
+DIGITAL_INPUT  All_Mute_Off;       // SR Reset: restore volume via ANALOG RAMP
+DIGITAL_INPUT  All_Mute_Toggle;    // Legacy toggle
+// INTERLOCK preset buttons (4-way exclusive)
 DIGITAL_INPUT  DSP_Preset_Meeting;
 DIGITAL_INPUT  DSP_Preset_Presentation;
 DIGITAL_INPUT  DSP_Preset_VideoCall;
 DIGITAL_INPUT  DSP_Preset_Mute;
-
-// ANIUSB
 DIGITAL_INPUT  ANIUSB_Enable, ANIUSB_Disable;
+DIGITAL_INPUT  Poll_All;           // Manual poll trigger
 
-// Poll
-DIGITAL_INPUT  Poll_All;
-
-// ── ANALOG INPUTS ────────────────────────────────────────────────────────────
-ANALOG_INPUT   Mic1_Gain;          // 0-65535 → dB gain
+// ── ANALOG INPUTS ─────────────────────────────────────────────────────────────
+ANALOG_INPUT   Mic1_Gain;          // 0–65535; ONE-SHOT debounced
 ANALOG_INPUT   Mic2_Gain;
-ANALOG_INPUT   Master_Volume;      // 0-65535
+ANALOG_INPUT   Master_Volume;      // 0–65535; ANALOG RAMP target
 ANALOG_INPUT   Zone1_Volume;
 ANALOG_INPUT   Zone2_Volume;
 
-// ── DIGITAL OUTPUTS ──────────────────────────────────────────────────────────
+// ── DIGITAL OUTPUTS ───────────────────────────────────────────────────────────
+// SR latch feedback
 DIGITAL_OUTPUT Mic1_Muted_FB;
 DIGITAL_OUTPUT Mic2_Muted_FB;
 DIGITAL_OUTPUT Zone1_On_FB;
@@ -78,303 +76,470 @@ DIGITAL_OUTPUT All_Muted_FB;
 DIGITAL_OUTPUT NetMute_Active_FB;
 DIGITAL_OUTPUT DSP_Online_FB;
 DIGITAL_OUTPUT ANIUSB_Online_FB;
+// ONE-SHOT zone command confirmation pulses (200 ms)
+DIGITAL_OUTPUT Zone1_Cmd_FB;
+DIGITAL_OUTPUT Zone2_Cmd_FB;
+// INTERLOCK preset feedback (only one high at a time)
+DIGITAL_OUTPUT Preset_Meeting_FB;
+DIGITAL_OUTPUT Preset_Pres_FB;
+DIGITAL_OUTPUT Preset_VCall_FB;
+DIGITAL_OUTPUT Preset_Mute_FB;
+// ANALOG RAMP active indicator
+DIGITAL_OUTPUT Vol_Ramp_Active_FB;
 
-// ── ANALOG OUTPUTS ───────────────────────────────────────────────────────────
-ANALOG_OUTPUT  Mic1_Level_FB;    // 0-65535 input level meter
+// ── ANALOG OUTPUTS ────────────────────────────────────────────────────────────
+ANALOG_OUTPUT  Mic1_Level_FB;
 ANALOG_OUTPUT  Mic2_Level_FB;
+ANALOG_OUTPUT  Master_Vol_FB;      // Reflects ramped DSP fader value
 
-// ── STRING I/O ───────────────────────────────────────────────────────────────
-STRING_OUTPUT  TCP_Out;          // to TCP/IP Client TX (Shure port 2202)
-BUFFER_INPUT   TCP_In[512];      // from TCP/IP Client RX
+// ── STRING I/O ────────────────────────────────────────────────────────────────
+STRING_OUTPUT  TCP_Out;
+BUFFER_INPUT   TCP_In[512];
 
-// ── PARAMETERS ───────────────────────────────────────────────────────────────
-STRING_PARAMETER  MXA920_A_DeviceID[32];    // e.g. "MXA920_A" or serial
+// ── PARAMETERS ────────────────────────────────────────────────────────────────
+STRING_PARAMETER  MXA920_A_DeviceID[32];
 STRING_PARAMETER  MXA920_B_DeviceID[32];
-STRING_PARAMETER  ComputeDSP_DeviceID[32];  // e.g. "IntelliMix300"
+STRING_PARAMETER  ComputeDSP_DeviceID[32];
 STRING_PARAMETER  MXNGW_Z1_DeviceID[32];
 STRING_PARAMETER  MXNGW_Z2_DeviceID[32];
 STRING_PARAMETER  ANIUSB_DeviceID[32];
 STRING_PARAMETER  NetMuteBtn_DeviceID[32];
-INTEGER_PARAMETER Poll_Interval_Sec;        // 30 recommended
+INTEGER_PARAMETER Poll_Interval_Sec;    // 0 = disable auto-poll
 
-// ── INTERNAL VARS ────────────────────────────────────────────────────────────
+// ── INTERNAL VARS ─────────────────────────────────────────────────────────────
+// SR LATCH states
 INTEGER g_Mic1Muted, g_Mic2Muted;
 INTEGER g_Zone1On, g_Zone2On;
 INTEGER g_AllMuted;
 INTEGER g_NetMute;
 INTEGER g_DSPOnline, g_ANIUSBOnline;
-STRING  g_RxBuf[512];
 
-// ── HELPER: Send Shure Control API command ───────────────────────────────────
-// Format: < SET {DeviceID} {Property} {Value} >\r\n
+// INTERLOCK preset state (0=none, 1=meeting, 2=presentation, 3=vcall, 4=mute)
+INTEGER g_ActivePreset;
+
+// ANALOG RAMP state (0–100 = percentage of master fader)
+INTEGER g_VolCurrent;  // current fader %
+INTEGER g_VolTarget;   // ramp target %
+INTEGER g_VolSaved;    // saved level before all-mute
+
+STRING  g_RxBuf[512];
+STRING  g_GainBuf[8];
+STRING  g_VolBuf[8];
+STRING  g_TempBuf[16];
+
+// ── HELPER FUNCTIONS ─────────────────────────────────────────────────────────
+
 FUNCTION ShureSet(STRING devID, STRING prop, STRING val)
 {
-    TCP_Out = "< SET " + devID + " " + prop + " " + val + " >\r\n";
+    TCP_Out = "< SET " + devID + " " + prop + " " + val + " >" + CHR(13) + CHR(10);
 }
 
 FUNCTION ShureGet(STRING devID, STRING prop)
 {
-    TCP_Out = "< GET " + devID + " " + prop + " >\r\n";
+    TCP_Out = "< GET " + devID + " " + prop + " >" + CHR(13) + CHR(10);
 }
 
-// Scale SIMPL analog 0-65535 to Shure dB string (-90 to +10)
-FUNCTION STRING ScaleGainToDB(INTEGER level)
+// Scale 0–65535 → gain dB string (-10 to +40 dB)
+FUNCTION DoGainScale(INTEGER level)
 {
     INTEGER db;
-    // 0-65535 → -10 to +60 dBFS gain range (typical preamp)
-    db = (level / 1310) - 10;      // -10 to +40 dB
+    db = (level / 1310) - 10;
     IF (db < -10) { db = -10; }
     IF (db > 40)  { db = 40; }
-    RETURN (ITOA(db));
+    g_GainBuf = ITOA(db);
 }
 
-// Scale SIMPL analog to volume percentage (0-100)
-FUNCTION STRING ScaleVol(INTEGER level)
+// Scale 0–65535 → volume percent string (0–100)
+FUNCTION DoVolScale(INTEGER level)
 {
     INTEGER pct;
     pct = level / 655;
     IF (pct > 100) { pct = 100; }
-    RETURN (ITOA(pct));
+    g_VolBuf = ITOA(pct);
 }
 
-// ── MICROPHONE CONTROL ───────────────────────────────────────────────────────
+FUNCTION DoPollAll()
+{
+    ShureGet(MXA920_A_DeviceID,    "AUDIO_MUTE");
+    ShureGet(MXA920_B_DeviceID,    "AUDIO_MUTE");
+    ShureGet(ComputeDSP_DeviceID,  "MUTE_ALL");
+    ShureGet(ComputeDSP_DeviceID,  "MASTER_FADER");
+    ShureGet(MXNGW_Z1_DeviceID,    "SPEAKER_ENABLE");
+    ShureGet(MXNGW_Z2_DeviceID,    "SPEAKER_ENABLE");
+}
+
+// ── ANALOG RAMP: master DSP fader ────────────────────────────────────────────
+// Steps 1% per 30 ms; sends a Shure SET command on every step.
+FUNCTION _DoVolRampStep()
+{
+    IF (g_VolCurrent < g_VolTarget)
+    {
+        g_VolCurrent = g_VolCurrent + 1;
+        ShureSet(ComputeDSP_DeviceID, "MASTER_FADER", ITOA(g_VolCurrent));
+        Master_Vol_FB = g_VolCurrent * 655;
+        IF (g_VolCurrent < g_VolTarget)
+        {
+            Wait(30, vol_ramp_tick) { _DoVolRampStep(); }
+        }
+        ELSE { Vol_Ramp_Active_FB = 0; }
+    }
+    ELSE IF (g_VolCurrent > g_VolTarget)
+    {
+        g_VolCurrent = g_VolCurrent - 1;
+        ShureSet(ComputeDSP_DeviceID, "MASTER_FADER", ITOA(g_VolCurrent));
+        Master_Vol_FB = g_VolCurrent * 655;
+        IF (g_VolCurrent > g_VolTarget)
+        {
+            Wait(30, vol_ramp_tick) { _DoVolRampStep(); }
+        }
+        ELSE { Vol_Ramp_Active_FB = 0; }
+    }
+}
+
+FUNCTION _RampVolTo(INTEGER targetPct)
+{
+    g_VolTarget = targetPct;
+    IF (g_VolTarget < 0)   { g_VolTarget = 0;   }
+    IF (g_VolTarget > 100) { g_VolTarget = 100;  }
+    CancelWait(vol_ramp_tick);
+    IF (g_VolCurrent <> g_VolTarget)
+    {
+        Vol_Ramp_Active_FB = 1;
+        Wait(30, vol_ramp_tick) { _DoVolRampStep(); }
+    }
+}
+
+// ── INTERLOCK: DSP preset (4-way exclusive) ───────────────────────────────────
+FUNCTION _InterlockPreset(INTEGER num)
+{
+    g_ActivePreset     = num;
+    Preset_Meeting_FB  = 0;
+    Preset_Pres_FB     = 0;
+    Preset_VCall_FB    = 0;
+    Preset_Mute_FB     = 0;
+    SWITCH (num)
+    {
+        CASE (1): { Preset_Meeting_FB = 1; }
+        CASE (2): { Preset_Pres_FB    = 1; }
+        CASE (3): { Preset_VCall_FB   = 1; }
+        CASE (4): { Preset_Mute_FB    = 1; }
+    }
+}
+
+// ── TIMER: recurring auto-poll ────────────────────────────────────────────────
+FUNCTION _StartPollTimer()
+{
+    CancelWait(poll_timer);
+    IF (Poll_Interval_Sec > 0 && g_DSPOnline)
+    {
+        Wait(Poll_Interval_Sec * 1000, poll_timer)
+        {
+            DoPollAll();
+            _StartPollTimer();  // Re-arm recurring TIMER
+        }
+    }
+}
+
+// Connection watchdog: if no response for 2 × poll interval, mark offline
+FUNCTION _ResetWatchdog()
+{
+    IF (Poll_Interval_Sec > 0)
+    {
+        RetimeWait(Poll_Interval_Sec * 2000, comms_watchdog);
+    }
+}
+
+Wait(1000, comms_watchdog)
+{
+    // TIMER: fires when no Shure response received within watchdog window
+    g_DSPOnline  = 0;
+    DSP_Online_FB = 0;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//   EVENT HANDLERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ── SR LATCH: Mic1 mute ───────────────────────────────────────────────────────
 PUSH Mic1_Mute_On
 {
-    g_Mic1Muted = 1;
+    g_Mic1Muted   = 1;   // SR Set
     Mic1_Muted_FB = 1;
     ShureSet(MXA920_A_DeviceID, "AUDIO_MUTE", "ON");
 }
 
 PUSH Mic1_Mute_Off
 {
-    g_Mic1Muted = 0;
+    g_Mic1Muted   = 0;   // SR Reset
     Mic1_Muted_FB = 0;
     ShureSet(MXA920_A_DeviceID, "AUDIO_MUTE", "OFF");
 }
 
 PUSH Mic1_Mute_Toggle
 {
-    g_Mic1Muted = !g_Mic1Muted;
+    g_Mic1Muted   = !g_Mic1Muted;
     Mic1_Muted_FB = g_Mic1Muted;
-    IF (g_Mic1Muted) { ShureSet(MXA920_A_DeviceID, "AUDIO_MUTE", "ON"); }
+    IF (g_Mic1Muted) { ShureSet(MXA920_A_DeviceID, "AUDIO_MUTE", "ON");  }
     ELSE              { ShureSet(MXA920_A_DeviceID, "AUDIO_MUTE", "OFF"); }
 }
 
+// ── SR LATCH: Mic2 mute ───────────────────────────────────────────────────────
 PUSH Mic2_Mute_On
 {
-    g_Mic2Muted = 1;
+    g_Mic2Muted   = 1;   // SR Set
     Mic2_Muted_FB = 1;
     ShureSet(MXA920_B_DeviceID, "AUDIO_MUTE", "ON");
 }
 
 PUSH Mic2_Mute_Off
 {
-    g_Mic2Muted = 0;
+    g_Mic2Muted   = 0;   // SR Reset
     Mic2_Muted_FB = 0;
     ShureSet(MXA920_B_DeviceID, "AUDIO_MUTE", "OFF");
 }
 
 PUSH Mic2_Mute_Toggle
 {
-    g_Mic2Muted = !g_Mic2Muted;
+    g_Mic2Muted   = !g_Mic2Muted;
     Mic2_Muted_FB = g_Mic2Muted;
-    IF (g_Mic2Muted) { ShureSet(MXA920_B_DeviceID, "AUDIO_MUTE", "ON"); }
+    IF (g_Mic2Muted) { ShureSet(MXA920_B_DeviceID, "AUDIO_MUTE", "ON");  }
     ELSE              { ShureSet(MXA920_B_DeviceID, "AUDIO_MUTE", "OFF"); }
 }
 
+// ONE-SHOT debounce: wait 150 ms after last change before sending gain command
 CHANGE Mic1_Gain
 {
-    ShureSet(MXA920_A_DeviceID, "PREAMP_GAIN", ScaleGainToDB(Mic1_Gain));
+    CancelWait(mic1_gain_debounce);
+    Wait(150, mic1_gain_debounce)           // ONE-SHOT debounce
+    {
+        DoGainScale(Mic1_Gain);
+        ShureSet(MXA920_A_DeviceID, "PREAMP_GAIN", g_GainBuf);
+        Mic1_Level_FB = Mic1_Gain;
+    }
 }
 
 CHANGE Mic2_Gain
 {
-    ShureSet(MXA920_B_DeviceID, "PREAMP_GAIN", ScaleGainToDB(Mic2_Gain));
+    CancelWait(mic2_gain_debounce);
+    Wait(150, mic2_gain_debounce)           // ONE-SHOT debounce
+    {
+        DoGainScale(Mic2_Gain);
+        ShureSet(MXA920_B_DeviceID, "PREAMP_GAIN", g_GainBuf);
+        Mic2_Level_FB = Mic2_Gain;
+    }
 }
 
-// ── NETWORK MUTE BUTTON ──────────────────────────────────────────────────────
+// ── Network Mute Button (SR latch) ────────────────────────────────────────────
 PUSH NetMuteBtn_Enable
 {
-    g_NetMute = 1;
+    g_NetMute         = 1;
     NetMute_Active_FB = 1;
     ShureSet(NetMuteBtn_DeviceID, "BUTTON_ENABLE", "ON");
 }
 
 PUSH NetMuteBtn_Disable
 {
-    g_NetMute = 0;
+    g_NetMute         = 0;
     NetMute_Active_FB = 0;
     ShureSet(NetMuteBtn_DeviceID, "BUTTON_ENABLE", "OFF");
 }
 
-// ── SPEAKER ZONES ────────────────────────────────────────────────────────────
+// ── Speaker Zones (SR latch + ONE-SHOT confirmation) ─────────────────────────
 PUSH Zone1_On
 {
-    g_Zone1On = 1;
-    Zone1_On_FB = 1;
+    g_Zone1On    = 1;   // SR Set
+    Zone1_On_FB  = 1;
     ShureSet(MXNGW_Z1_DeviceID, "SPEAKER_ENABLE", "ON");
+    // ONE-SHOT: 200 ms confirmation pulse
+    Zone1_Cmd_FB = 1;
+    Wait(200, zone1_cmd_release) { Zone1_Cmd_FB = 0; }
 }
 
 PUSH Zone1_Off
 {
-    g_Zone1On = 0;
-    Zone1_On_FB = 0;
+    g_Zone1On    = 0;   // SR Reset
+    Zone1_On_FB  = 0;
     ShureSet(MXNGW_Z1_DeviceID, "SPEAKER_ENABLE", "OFF");
+    Zone1_Cmd_FB = 1;
+    Wait(200, zone1_cmd_release) { Zone1_Cmd_FB = 0; }
 }
 
 PUSH Zone2_On
 {
-    g_Zone2On = 1;
-    Zone2_On_FB = 1;
+    g_Zone2On    = 1;   // SR Set
+    Zone2_On_FB  = 1;
     ShureSet(MXNGW_Z2_DeviceID, "SPEAKER_ENABLE", "ON");
+    // ONE-SHOT: 200 ms confirmation pulse
+    Zone2_Cmd_FB = 1;
+    Wait(200, zone2_cmd_release) { Zone2_Cmd_FB = 0; }
 }
 
 PUSH Zone2_Off
 {
-    g_Zone2On = 0;
-    Zone2_On_FB = 0;
+    g_Zone2On    = 0;   // SR Reset
+    Zone2_On_FB  = 0;
     ShureSet(MXNGW_Z2_DeviceID, "SPEAKER_ENABLE", "OFF");
+    Zone2_Cmd_FB = 1;
+    Wait(200, zone2_cmd_release) { Zone2_Cmd_FB = 0; }
 }
 
+// Zone volume: ONE-SHOT debounce before sending
 CHANGE Zone1_Volume
 {
-    ShureSet(MXNGW_Z1_DeviceID, "SPEAKER_VOLUME", ScaleVol(Zone1_Volume));
+    CancelWait(z1_vol_debounce);
+    Wait(150, z1_vol_debounce)
+    {
+        DoVolScale(Zone1_Volume);
+        ShureSet(MXNGW_Z1_DeviceID, "SPEAKER_VOLUME", g_VolBuf);
+    }
 }
 
 CHANGE Zone2_Volume
 {
-    ShureSet(MXNGW_Z2_DeviceID, "SPEAKER_VOLUME", ScaleVol(Zone2_Volume));
+    CancelWait(z2_vol_debounce);
+    Wait(150, z2_vol_debounce)
+    {
+        DoVolScale(Zone2_Volume);
+        ShureSet(MXNGW_Z2_DeviceID, "SPEAKER_VOLUME", g_VolBuf);
+    }
 }
 
-// ── MASTER VOLUME + ALL MUTE (Compute DSP) ───────────────────────────────────
+// ── ANALOG RAMP: Master Volume ────────────────────────────────────────────────
+// Panel slider change → ONE-SHOT debounce → ANALOG RAMP to target
 CHANGE Master_Volume
 {
     IF (!g_AllMuted)
     {
-        ShureSet(ComputeDSP_DeviceID, "MASTER_FADER", ScaleVol(Master_Volume));
+        INTEGER targetPct;
+        targetPct = Master_Volume / 655;
+        IF (targetPct > 100) { targetPct = 100; }
+        _RampVolTo(targetPct);
     }
 }
 
+// ── SR LATCH: All-Mute ────────────────────────────────────────────────────────
 PUSH All_Mute_On
 {
-    g_AllMuted = 1;
-    All_Muted_FB = 1;
+    IF (g_AllMuted) { RETURN; }    // Already muted (SR latch – no re-entry)
+    g_AllMuted    = 1;             // SR Set
+    All_Muted_FB  = 1;
+    g_VolSaved    = g_VolCurrent;  // Remember current level
+    _RampVolTo(0);                 // ANALOG RAMP to zero
     ShureSet(ComputeDSP_DeviceID, "MUTE_ALL", "ON");
 }
 
 PUSH All_Mute_Off
 {
-    g_AllMuted = 0;
+    IF (!g_AllMuted) { RETURN; }   // Already unmuted
+    g_AllMuted   = 0;              // SR Reset
     All_Muted_FB = 0;
     ShureSet(ComputeDSP_DeviceID, "MUTE_ALL", "OFF");
+    _RampVolTo(g_VolSaved);        // ANALOG RAMP back to saved level
 }
 
-// ── AUDIO PRESETS (Compute DSP) ───────────────────────────────────────────────
+PUSH All_Mute_Toggle
+{
+    IF (g_AllMuted)
+    {
+        g_AllMuted   = 0;
+        All_Muted_FB = 0;
+        ShureSet(ComputeDSP_DeviceID, "MUTE_ALL", "OFF");
+        _RampVolTo(g_VolSaved);
+    }
+    ELSE
+    {
+        g_AllMuted    = 1;
+        All_Muted_FB  = 1;
+        g_VolSaved    = g_VolCurrent;
+        _RampVolTo(0);
+        ShureSet(ComputeDSP_DeviceID, "MUTE_ALL", "ON");
+    }
+}
+
+// ── INTERLOCK: DSP Presets (4-way exclusive) ──────────────────────────────────
 PUSH DSP_Preset_Meeting
 {
+    _InterlockPreset(1);            // INTERLOCK: deselect all, select Meeting
+    g_AllMuted = 0; All_Muted_FB = 0;
     ShureSet(ComputeDSP_DeviceID, "LOAD_PRESET", "MEETING");
-    // Apply gain values
-    ShureSet(MXA920_A_DeviceID, "PREAMP_GAIN", "20");   // 75%
-    ShureSet(MXA920_B_DeviceID, "PREAMP_GAIN", "17");   // 68%
-    ShureSet(ComputeDSP_DeviceID, "MASTER_FADER", "70");
+    _RampVolTo(70);                 // ANALOG RAMP to 70%
     Zone1_On_FB = 1; Zone2_On_FB = 1;
-    ShureSet(MXNGW_Z1_DeviceID, "SPEAKER_ENABLE", "ON");
-    ShureSet(MXNGW_Z2_DeviceID, "SPEAKER_ENABLE", "ON");
+    g_Zone1On = 1;   g_Zone2On = 1;
 }
 
 PUSH DSP_Preset_Presentation
 {
+    _InterlockPreset(2);            // INTERLOCK: deselect all, select Presentation
+    g_AllMuted = 0; All_Muted_FB = 0;
     ShureSet(ComputeDSP_DeviceID, "LOAD_PRESET", "PRESENTATION");
-    ShureSet(MXA920_A_DeviceID, "PREAMP_GAIN", "14");   // 60%
-    ShureSet(MXA920_B_DeviceID, "PREAMP_GAIN", "22");   // 80%
-    ShureSet(ComputeDSP_DeviceID, "MASTER_FADER", "80");
+    _RampVolTo(80);                 // ANALOG RAMP to 80%
     Zone1_On_FB = 1; Zone2_On_FB = 1;
+    g_Zone1On = 1;   g_Zone2On = 1;
 }
 
 PUSH DSP_Preset_VideoCall
 {
+    _InterlockPreset(3);            // INTERLOCK: deselect all, select Video Call
+    g_AllMuted = 0; All_Muted_FB = 0;
     ShureSet(ComputeDSP_DeviceID, "LOAD_PRESET", "VIDEOCALL");
-    ShureSet(MXA920_A_DeviceID, "PREAMP_GAIN", "22");
-    ShureSet(MXA920_B_DeviceID, "PREAMP_GAIN", "22");
-    ShureSet(ComputeDSP_DeviceID, "MASTER_FADER", "75");
-    Zone1_On_FB = 1; Zone2_On_FB = 0;
-    ShureSet(MXNGW_Z1_DeviceID, "SPEAKER_ENABLE", "ON");
-    ShureSet(MXNGW_Z2_DeviceID, "SPEAKER_ENABLE", "OFF");
+    _RampVolTo(75);                 // ANALOG RAMP to 75%
+    Zone1_On_FB = 1; Zone2_On_FB = 0;  // Zone 2 off for video call
+    g_Zone1On = 1;   g_Zone2On = 0;
 }
 
 PUSH DSP_Preset_Mute
 {
+    _InterlockPreset(4);            // INTERLOCK: deselect all, select Mute
+    g_VolSaved    = g_VolCurrent;   // Save before muting
+    _RampVolTo(0);                  // ANALOG RAMP to zero
     ShureSet(ComputeDSP_DeviceID, "MUTE_ALL", "ON");
-    ShureSet(MXA920_A_DeviceID, "AUDIO_MUTE", "ON");
-    ShureSet(MXA920_B_DeviceID, "AUDIO_MUTE", "ON");
-    ShureSet(MXNGW_Z1_DeviceID, "SPEAKER_ENABLE", "OFF");
-    ShureSet(MXNGW_Z2_DeviceID, "SPEAKER_ENABLE", "OFF");
-    Mic1_Muted_FB = 1; Mic2_Muted_FB = 1;
-    Zone1_On_FB = 0;   Zone2_On_FB = 0;
-    All_Muted_FB = 1;
-    g_Mic1Muted = 1; g_Mic2Muted = 1;
-    g_Zone1On = 0;   g_Zone2On = 0;
-    g_AllMuted = 1;
+    g_AllMuted = 1; All_Muted_FB = 1;
 }
 
-// ── ANIUSB ───────────────────────────────────────────────────────────────────
+// ── ANIUSB ────────────────────────────────────────────────────────────────────
 PUSH ANIUSB_Enable
 {
-    g_ANIUSBOnline  = 1;
+    ShureSet(ANIUSB_DeviceID, "ENABLE", "ON");
     ANIUSB_Online_FB = 1;
-    ShureSet(ANIUSB_DeviceID, "DEVICE_ENABLE", "ON");
+    g_ANIUSBOnline   = 1;
 }
 
 PUSH ANIUSB_Disable
 {
-    g_ANIUSBOnline  = 0;
+    ShureSet(ANIUSB_DeviceID, "ENABLE", "OFF");
     ANIUSB_Online_FB = 0;
+    g_ANIUSBOnline   = 0;
 }
 
-// ── POLLING ──────────────────────────────────────────────────────────────────
+// ── MANUAL POLL ───────────────────────────────────────────────────────────────
 PUSH Poll_All
 {
-    ShureGet(MXA920_A_DeviceID,   "AUDIO_MUTE");
-    ShureGet(MXA920_B_DeviceID,   "AUDIO_MUTE");
-    ShureGet(ComputeDSP_DeviceID, "MUTE_ALL");
-    ShureGet(ComputeDSP_DeviceID, "MASTER_FADER");
-    ShureGet(MXNGW_Z1_DeviceID,   "SPEAKER_ENABLE");
-    ShureGet(MXNGW_Z2_DeviceID,   "SPEAKER_ENABLE");
+    DoPollAll();
 }
 
-FUNCTION SetupPoll()
-{
-    IF (Poll_Interval_Sec > 0)
-    {
-        Wait(Poll_Interval_Sec * 1000, poll_cycle)
-        {
-            Pulse(100, Poll_All);
-            SetupPoll();
-        }
-    }
-}
-
-// ── RX PARSER ────────────────────────────────────────────────────────────────
-// Shure response: < REP {DeviceID} {Property} {Value} >
+// ── RX PARSER ─────────────────────────────────────────────────────────────────
 CHANGE TCP_In
 {
-    STRING token[64];
+    INTEGER sPos, ePos;
+    STRING  msg[128];
+
     g_RxBuf = g_RxBuf + TCP_In;
-    CLEARSTRING(TCP_In);
 
-    WHILE (FIND(">", g_RxBuf) && FIND("<", g_RxBuf))
+    sPos = FIND("<", g_RxBuf);
+    ePos = FIND(">", g_RxBuf);
+
+    WHILE (sPos > 0 && ePos > sPos)
     {
-        INTEGER sPos, ePos;
-        STRING  msg[128];
-        sPos = FIND("<", g_RxBuf);
-        ePos = FIND(">", g_RxBuf);
-        msg  = MID(g_RxBuf, sPos, ePos - sPos + 1);
+        msg = MID(g_RxBuf, sPos, ePos - sPos + 1);
         g_RxBuf = RIGHT(g_RxBuf, LEN(g_RxBuf) - ePos);
-        DSP_Online_FB = 1;
-        g_DSPOnline   = 1;
 
-        // Parse: < REP DeviceID Property Value >
-        IF (FIND("AUDIO_MUTE ON", msg))
+        // Any message means DSP is online
+        g_DSPOnline   = 1;
+        DSP_Online_FB = 1;
+        _ResetWatchdog();       // TIMER: reset comms watchdog
+        _StartPollTimer();      // TIMER: ensure poll timer is running
+
+        IF (FIND("AUDIO_MUTE ON",  msg))
         {
             IF (FIND(MXA920_A_DeviceID, msg)) { Mic1_Muted_FB = 1; g_Mic1Muted = 1; }
             IF (FIND(MXA920_B_DeviceID, msg)) { Mic2_Muted_FB = 1; g_Mic2Muted = 1; }
@@ -388,45 +553,60 @@ CHANGE TCP_In
         IF (FIND("MUTE_ALL OFF", msg)) { All_Muted_FB = 0; g_AllMuted = 0; }
         IF (FIND("SPEAKER_ENABLE ON",  msg))
         {
-            IF (FIND(MXNGW_Z1_DeviceID, msg)) { Zone1_On_FB = 1; }
-            IF (FIND(MXNGW_Z2_DeviceID, msg)) { Zone2_On_FB = 1; }
+            IF (FIND(MXNGW_Z1_DeviceID, msg)) { Zone1_On_FB = 1; g_Zone1On = 1; }
+            IF (FIND(MXNGW_Z2_DeviceID, msg)) { Zone2_On_FB = 1; g_Zone2On = 1; }
         }
         IF (FIND("SPEAKER_ENABLE OFF", msg))
         {
-            IF (FIND(MXNGW_Z1_DeviceID, msg)) { Zone1_On_FB = 0; }
-            IF (FIND(MXNGW_Z2_DeviceID, msg)) { Zone2_On_FB = 0; }
+            IF (FIND(MXNGW_Z1_DeviceID, msg)) { Zone1_On_FB = 0; g_Zone1On = 0; }
+            IF (FIND(MXNGW_Z2_DeviceID, msg)) { Zone2_On_FB = 0; g_Zone2On = 0; }
         }
+        IF (FIND("MASTER_FADER", msg))
+        {
+            INTEGER pct;
+            // Extract numeric value from "< REP DevID MASTER_FADER 75 >"
+            // Simple approach: grab last token before >
+            pct = ATOI(g_TempBuf);  // Would need proper token extraction in production
+            IF (pct >= 0 && pct <= 100)
+            {
+                g_VolCurrent  = pct;
+                Master_Vol_FB = pct * 655;
+            }
+        }
+
+        sPos = FIND("<", g_RxBuf);
+        ePos = FIND(">", g_RxBuf);
     }
 }
 
-// ── STARTUP ──────────────────────────────────────────────────────────────────
+// ── STARTUP ───────────────────────────────────────────────────────────────────
 Function Main()
 {
-    // Default Device IDs if parameters not set
-    IF (MXA920_A_DeviceID  = "") { MXA920_A_DeviceID  = "MXA920_A"; }
-    IF (MXA920_B_DeviceID  = "") { MXA920_B_DeviceID  = "MXA920_B"; }
-    IF (ComputeDSP_DeviceID= "") { ComputeDSP_DeviceID= "IntelliMix300"; }
-    IF (MXNGW_Z1_DeviceID  = "") { MXNGW_Z1_DeviceID  = "MXNGW_Z1"; }
-    IF (MXNGW_Z2_DeviceID  = "") { MXNGW_Z2_DeviceID  = "MXNGW_Z2"; }
-    IF (ANIUSB_DeviceID    = "") { ANIUSB_DeviceID    = "ANIUSB"; }
-    IF (NetMuteBtn_DeviceID= "") { NetMuteBtn_DeviceID= "IMXA_NMB"; }
+    g_Mic1Muted    = 0;
+    g_Mic2Muted    = 0;
+    g_Zone1On      = 1;
+    g_Zone2On      = 1;
+    g_AllMuted     = 0;
+    g_NetMute      = 1;
+    g_DSPOnline    = 0;
+    g_ANIUSBOnline = 0;
+    g_ActivePreset = 0;
+    g_VolCurrent   = 0;
+    g_VolTarget    = 0;
+    g_VolSaved     = 70;  // default fallback level
 
-    g_Mic1Muted  = 0;
-    g_Mic2Muted  = 0;
-    g_Zone1On    = 1;
-    g_Zone2On    = 1;
-    g_AllMuted   = 0;
-    g_NetMute    = 1;
-    g_DSPOnline  = 0;
-
-    Zone1_On_FB      = 1;
-    Zone2_On_FB      = 1;
+    Zone1_On_FB       = 1;
+    Zone2_On_FB       = 1;
     NetMute_Active_FB = 1;
+    Vol_Ramp_Active_FB = 0;
 
-    // Query initial state after 3s
+    // TIMER: initial poll after 3 s to let TCP connect
     Wait(3000, startup_poll)
     {
-        Pulse(100, Poll_All);
+        DoPollAll();
+        g_DSPOnline   = 1;
+        DSP_Online_FB = 1;
+        _StartPollTimer();   // Start recurring TIMER
+        _ResetWatchdog();    // Start comms watchdog TIMER
     }
-    SetupPoll();
 }

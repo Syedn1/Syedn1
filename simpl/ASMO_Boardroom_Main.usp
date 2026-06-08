@@ -1,27 +1,57 @@
 /*
 ==============================================================================
-  ASMO Boardroom – Main SIMPL Windows Program Logic
+  ASMO Boardroom - Main SIMPL Windows Program Logic
   File:       ASMO_Boardroom_Main.usp
   Processor:  Crestron PRO3 (testing) / RMC4 (production)
   Compiled:   SIMPL+ 3.x (PRO3) / SIMPL+ 4.x (RMC4)
-  Author:     AV Control Systems
-  Version:    2.0.0
+  Version:    3.0.0
 
-  HOW TO USE IN SIMPL WINDOWS:
-  1. Open SIMPL Windows → File → New Program
-  2. Select processor: PRO3 or RMC4
-  3. Add this .usp via Program → Insert SIMPL+ Module
-  4. Wire signals from the symbol to device modules
-  5. Compile → Upload to processor
+  SIMPL LOGIC SYMBOLS IMPLEMENTED
+  ─────────────────────────────────────────────────────────────────────────────
+  SR LATCH     System power gate (System_Power_On / System_Power_Off inputs).
+               Set drives startup SEQUENCE; Reset drives shutdown SEQUENCE.
 
-  SIGNAL MAP (matches CH5 panel Join numbers):
-    Digital 1   = System_Power
-    Digital 10  = Display1_Power_On
-    Digital 11  = Display1_Power_Off
-    Digital 12-17 = Display1_Source_1..6
-    Digital 20  = Display2_Power_On
-    Digital 21  = Display2_Power_Off
-    Digital 22-27 = Display2_Source_1..6
+  INTERLOCK    Disp1 source  : 6-way exclusive (Disp1_Src1..6)
+               Disp2 source  : 6-way exclusive (Disp2_Src1..6)
+               Camera select : 2-way exclusive (Cam1_Select / Cam2_Select)
+               Matrix mode   : 3-way exclusive (Mirror / Independent / Extend)
+               Audio preset  : 4-way exclusive (Meeting/Pres/VCall/Mute)
+               VC share src  : 3-way exclusive (CS1 / HDMI1 / HDMI2)
+               Implemented via state variable + SWITCH to clear/set all FBs.
+
+  ONE-SHOT     All device command outputs pulsed 200 ms then released.
+               Wait(200, label) { output = 0; }
+
+  ANALOG RAMP  Master volume ramps at 1%/30 ms (≈3 s for 0→100%).
+               _RampVolTo(target) uses recursive Wait(30, vol_ramp_tick).
+               Shutdown ramps volume to 0 before powering off devices.
+
+  STEPPER      Vol_Up / Vol_Down increment Master_Vol_Out ±2% per press.
+               Cam_Speed_Up / Cam_Speed_Down adjust PTZ speed ±1 step.
+
+  TIMER        Auto-shutoff idle timer: configurable via Auto_Shutoff_Mins.
+               RetimeWait() resets timer on any panel activity.
+               Recurring device-poll: Wait(30 000, poll_timer) re-arms itself.
+
+  SEQUENCE     _StartupSequence() - 5 ordered steps with staggered delays:
+                 0 ms  : System ON, status "Starting up..."
+               500 ms  : Display power ON pulse
+              5 500 ms : Default source routing applied
+              7 000 ms : Audio zones enabled, volume ramped to default
+              8 000 ms : Ready status displayed
+               _ShutdownSequence() - ordered teardown with volume ramp.
+  ─────────────────────────────────────────────────────────────────────────────
+
+  SIGNAL MAP (matches CH5 panel Join numbers)
+    Digital 1   = System_Power_On  (SR Set)
+    Digital 2   = System_Power_Off (SR Reset)
+    Digital 3   = System_Power_Toggle (legacy)
+    Digital 10  = Disp1_Power_On
+    Digital 11  = Disp1_Power_Off
+    Digital 12-17 = Disp1_Source_1..6
+    Digital 20  = Disp2_Power_On
+    Digital 21  = Disp2_Power_Off
+    Digital 22-27 = Disp2_Source_1..6
     Digital 30  = Matrix_Mirror
     Digital 31  = Matrix_Independent
     Digital 32  = Matrix_Extend
@@ -33,6 +63,10 @@
     Digital 43-50 = PTZ controls
     Digital 51-54 = Cam_Preset_1..4
     Digital 55  = Cam_Preset_Save
+    Digital 56  = Vol_Up
+    Digital 57  = Vol_Down
+    Digital 58  = Cam_Speed_Up
+    Digital 59  = Cam_Speed_Down
     Digital 60  = Mic1_Mute
     Digital 61  = Mic2_Mute
     Digital 62  = Zone1_Enable
@@ -52,12 +86,17 @@
 */
 
 #SYMBOL_NAME "ASMO_Boardroom_Main"
-#HINT "Main logic for ASMO Boardroom AV system"
-#CATEGORY "9" // General
+#HINT "Main logic for ASMO Boardroom AV system - v3 with SIMPL logic symbols"
+#CATEGORY "9"
 #DEFAULT_VOLATILE
+#ENABLE_STACK_CHECKING
+#ENABLE_TRACE
 
-// ── CH5 PANEL DIGITAL INPUTS (from touch panel / joins) ────────────────────
-DIGITAL_INPUT  System_Power_Toggle;
+// ── CH5 PANEL DIGITAL INPUTS ─────────────────────────────────────────────────
+// SR LATCH inputs for system power (replaces single toggle)
+DIGITAL_INPUT  System_Power_On;          // SR: Set  → starts startup sequence
+DIGITAL_INPUT  System_Power_Off;         // SR: Reset → starts shutdown sequence
+DIGITAL_INPUT  System_Power_Toggle;      // Legacy toggle (still supported)
 
 // Display 1 (Sony 98" Left)
 DIGITAL_INPUT  Disp1_Power_On, Disp1_Power_Off;
@@ -83,6 +122,12 @@ DIGITAL_INPUT  Cam_Focus_Far, Cam_Focus_Near;
 DIGITAL_INPUT  Cam_Preset_1, Cam_Preset_2, Cam_Preset_3, Cam_Preset_4;
 DIGITAL_INPUT  Cam_Preset_Save;
 
+// STEPPER inputs for camera speed
+DIGITAL_INPUT  Cam_Speed_Up, Cam_Speed_Down;
+
+// STEPPER inputs for master volume (+/- 2% per press)
+DIGITAL_INPUT  Vol_Up, Vol_Down;
+
 // Audio
 DIGITAL_INPUT  Mic1_Mute_Toggle, Mic2_Mute_Toggle;
 DIGITAL_INPUT  Zone1_Toggle, Zone2_Toggle;
@@ -95,25 +140,38 @@ DIGITAL_INPUT  Audio_Preset_VCall, Audio_Preset_Mute;
 DIGITAL_INPUT  VC_Join_Btn, VC_Leave_Btn;
 DIGITAL_INPUT  VC_Mic_Toggle, VC_Cam_Toggle;
 DIGITAL_INPUT  VC_Share_Toggle;
+DIGITAL_INPUT  VC_Share_CS1, VC_Share_HDMI1, VC_Share_HDMI2;
 
-// ── ANALOG INPUTS (from panel) ──────────────────────────────────────────────
-ANALOG_INPUT   Master_Volume_Level;  // 0-65535
+// ── ANALOG INPUTS ─────────────────────────────────────────────────────────────
+ANALOG_INPUT   Master_Volume_Level;  // 0–65535 from panel slider
 ANALOG_INPUT   Mic1_Gain_Level;
 ANALOG_INPUT   Mic2_Gain_Level;
 
-// ── DIGITAL OUTPUTS (to device modules / panel feedback) ───────────────────
+// ── DIGITAL OUTPUTS (feedback to panel + command pulses to device modules) ───
 // System
 DIGITAL_OUTPUT System_On_FB;
+DIGITAL_OUTPUT Seq_Running_FB;      // HIGH while startup/shutdown SEQUENCE runs
 
-// Display feedback
+// Display 1 feedback (INTERLOCK group – only one source FB high at a time)
 DIGITAL_OUTPUT Disp1_On_FB, Disp1_Off_FB;
 DIGITAL_OUTPUT Disp1_Src1_FB, Disp1_Src2_FB, Disp1_Src3_FB;
 DIGITAL_OUTPUT Disp1_Src4_FB, Disp1_Src5_FB, Disp1_Src6_FB;
+// ONE-SHOT command pulses to Sony BRAVIA 1 module
+DIGITAL_OUTPUT Disp1_Pwr_On_Cmd;   // 200 ms pulse → SonyBRAVIA_1.PowerOn
+DIGITAL_OUTPUT Disp1_Pwr_Off_Cmd;  // 200 ms pulse → SonyBRAVIA_1.PowerOff
+
+// Display 2 feedback (INTERLOCK group)
 DIGITAL_OUTPUT Disp2_On_FB, Disp2_Off_FB;
 DIGITAL_OUTPUT Disp2_Src1_FB, Disp2_Src2_FB, Disp2_Src3_FB;
 DIGITAL_OUTPUT Disp2_Src4_FB, Disp2_Src5_FB, Disp2_Src6_FB;
+// ONE-SHOT command pulses to Sony BRAVIA 2 module
+DIGITAL_OUTPUT Disp2_Pwr_On_Cmd;
+DIGITAL_OUTPUT Disp2_Pwr_Off_Cmd;
 
-// Camera feedback
+// Matrix mode feedback (INTERLOCK group – only one mode FB high)
+DIGITAL_OUTPUT Matrix_Mirror_FB, Matrix_Indep_FB, Matrix_Extend_FB;
+
+// Camera feedback (INTERLOCK group)
 DIGITAL_OUTPUT Cam1_Active_FB, Cam2_Active_FB;
 DIGITAL_OUTPUT Cam_Track_FB;
 
@@ -122,100 +180,83 @@ DIGITAL_OUTPUT Mic1_Mute_FB, Mic2_Mute_FB;
 DIGITAL_OUTPUT Zone1_On_FB, Zone2_On_FB;
 DIGITAL_OUTPUT All_Mute_FB;
 DIGITAL_OUTPUT Net_Mute_FB;
+// Audio preset feedback (INTERLOCK group – only one preset FB high)
+DIGITAL_OUTPUT Audio_Meeting_FB, Audio_Pres_FB, Audio_VCall_FB, Audio_Mute_Preset_FB;
 
 // VC feedback
 DIGITAL_OUTPUT VC_InCall_FB;
 DIGITAL_OUTPUT VC_Mic_FB, VC_Cam_FB;
+// VC share source feedback (INTERLOCK group)
+DIGITAL_OUTPUT VC_Share_CS1_FB, VC_Share_HDMI1_FB, VC_Share_HDMI2_FB;
 
-// ── ANALOG OUTPUTS (to device modules) ─────────────────────────────────────
+// ANALOG RAMP active indicator
+DIGITAL_OUTPUT Vol_Ramp_Active_FB;  // HIGH while volume ramp runs
+
+// ── ANALOG OUTPUTS ────────────────────────────────────────────────────────────
 ANALOG_OUTPUT  Master_Vol_Out;
 ANALOG_OUTPUT  Mic1_Gain_Out;
 ANALOG_OUTPUT  Mic2_Gain_Out;
 ANALOG_OUTPUT  Cam_Speed_Out;
 
-// ── STRING OUTPUTS (to device modules) ─────────────────────────────────────
-STRING_OUTPUT  Status_FB_Out;    // to panel serial join 7
-STRING_OUTPUT  Matrix_Route_Out; // to HD-MD-8x8 module
+// ── STRING OUTPUTS ────────────────────────────────────────────────────────────
+STRING_OUTPUT  Status_FB_Out;    // → panel serial join 7
+STRING_OUTPUT  Matrix_Route_Out; // → HD-MD-8×8 module
 
-// ── PARAMETERS ──────────────────────────────────────────────────────────────
+// ── PARAMETERS ────────────────────────────────────────────────────────────────
 STRING_PARAMETER  Room_Name[32];
-INTEGER_PARAMETER Default_Master_Vol;  // 0-100 → scaled to 0-65535
-INTEGER_PARAMETER Auto_Shutoff_Mins;
+INTEGER_PARAMETER Default_Master_Vol;   // 0–100 → scaled to 0–65535
+INTEGER_PARAMETER Auto_Shutoff_Mins;    // 0 = disabled
 
-// ── INTERNAL STATE VARIABLES ─────────────────────────────────────────────────
+// ── INTERNAL STATE ────────────────────────────────────────────────────────────
+// SR LATCH state
 INTEGER g_SystemOn;
-INTEGER g_ActiveCam;      // 1 or 2
-INTEGER g_CamTrack;
-INTEGER g_MatrixMode;     // 0=mirror 1=independent 2=extend
+
+// INTERLOCK states (single variable per group, value = active slot)
+INTEGER g_Disp1Src;    // 0=none, 1–6=active source
+INTEGER g_Disp2Src;
+INTEGER g_MatrixMode;  // 0=mirror, 1=independent, 2=extend
+INTEGER g_CamSel;      // 1 or 2
+INTEGER g_AudioPreset; // 0=none, 1=meeting, 2=pres, 3=vcall, 4=mute
+INTEGER g_VCShare;     // 0=none, 1=CS1, 2=HDMI1, 3=HDMI2
+
+// Other state
 INTEGER g_Disp1On, g_Disp2On;
-INTEGER g_Disp1Src, g_Disp2Src;
 INTEGER g_Mic1Muted, g_Mic2Muted;
 INTEGER g_Zone1On, g_Zone2On;
 INTEGER g_AllMuted;
 INTEGER g_NetMute;
+INTEGER g_CamTrack;
 INTEGER g_VCInCall;
 INTEGER g_VCMicOn, g_VCCamOn;
-LONG_INTEGER g_ShutoffTimer;
+INTEGER g_SeqRunning;
 
-// ── SYSTEM POWER ─────────────────────────────────────────────────────────────
-PUSH System_Power_Toggle
+// ANALOG RAMP state
+INTEGER g_VolCurrent;  // tracks current ramped value (0–65535)
+INTEGER g_VolTarget;
+INTEGER g_VolStepMs;   // ms per ramp tick (30 = smooth ~3 s full sweep)
+INTEGER g_VolStep;     // step size per tick (655 = 1%)
+
+// STEPPER state
+INTEGER g_VolStepSize; // STEPPER increment (1310 = 2%)
+INTEGER g_CamSpeedStep;// STEPPER step size for camera speed
+INTEGER g_CamSpeedVal; // current camera speed 1–24
+
+// TIMER state (auto-shutoff)
+LONG_INTEGER g_ShutoffMs;
+
+// ── ─────────────────────────────────────────────────────────────────────────
+//   HELPER FUNCTIONS
+//   Must be declared before any event handler that calls them.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ── INTERLOCK: Display 1 source ───────────────────────────────────────────────
+// Clears all source FBs then sets exactly the one matching src (1–6).
+// src = 0 clears all (display off).
+FUNCTION _InterlockDisp1Src(INTEGER src)
 {
-    g_SystemOn = !g_SystemOn;
-    System_On_FB = g_SystemOn;
-
-    IF (g_SystemOn)
-    {
-        // Power-on sequence
-        Master_Vol_Out = Default_Master_Vol * 655;
-        Status_FB_Out  = "System ON";
-    }
-    ELSE
-    {
-        // Power-off macro: shut everything down
-        Pulse(100, Disp1_Power_Off);
-        Pulse(100, Disp2_Power_Off);
-        Master_Vol_Out = 0;
-        g_Disp1On = 0;
-        g_Disp2On = 0;
-        Disp1_On_FB = 0;
-        Disp2_On_FB = 0;
-        Status_FB_Out = "System OFF";
-    }
-}
-
-// ── DISPLAY 1 CONTROL ────────────────────────────────────────────────────────
-PUSH Disp1_Power_On
-{
-    IF (g_SystemOn)
-    {
-        g_Disp1On   = 1;
-        Disp1_On_FB  = 1;
-        Disp1_Off_FB = 0;
-    }
-}
-
-PUSH Disp1_Power_Off
-{
-    g_Disp1On    = 0;
-    Disp1_On_FB  = 0;
-    Disp1_Off_FB = 1;
-    g_Disp1Src   = 0;
-    _ClearDisp1SourceFB();
-}
-
-// Source selection with matrix routing
-PUSH Disp1_Src1  { _RouteDisp1(1); }
-PUSH Disp1_Src2  { _RouteDisp1(2); }
-PUSH Disp1_Src3  { _RouteDisp1(3); }
-PUSH Disp1_Src4  { _RouteDisp1(4); }
-PUSH Disp1_Src5  { _RouteDisp1(5); }
-PUSH Disp1_Src6  { _RouteDisp1(6); }
-
-FUNCTION _RouteDisp1(INTEGER src)
-{
-    IF (!g_Disp1On) { RETURN; }
     g_Disp1Src = src;
-    _ClearDisp1SourceFB();
+    Disp1_Src1_FB = 0; Disp1_Src2_FB = 0; Disp1_Src3_FB = 0;
+    Disp1_Src4_FB = 0; Disp1_Src5_FB = 0; Disp1_Src6_FB = 0;
     SWITCH (src)
     {
         CASE (1): { Disp1_Src1_FB = 1; }
@@ -225,51 +266,14 @@ FUNCTION _RouteDisp1(INTEGER src)
         CASE (5): { Disp1_Src5_FB = 1; }
         CASE (6): { Disp1_Src6_FB = 1; }
     }
-    // Send route command to HD-MD-8x8
-    Matrix_Route_Out = "CL1I" + ITOA(src) + "!";
-
-    // Mirror mode: route same source to Display 2
-    IF (g_MatrixMode = 0) { _RouteDisp2(src); }
 }
 
-FUNCTION _ClearDisp1SourceFB()
+// ── INTERLOCK: Display 2 source ───────────────────────────────────────────────
+FUNCTION _InterlockDisp2Src(INTEGER src)
 {
-    Disp1_Src1_FB = 0; Disp1_Src2_FB = 0; Disp1_Src3_FB = 0;
-    Disp1_Src4_FB = 0; Disp1_Src5_FB = 0; Disp1_Src6_FB = 0;
-}
-
-// ── DISPLAY 2 CONTROL ────────────────────────────────────────────────────────
-PUSH Disp2_Power_On
-{
-    IF (g_SystemOn)
-    {
-        g_Disp2On    = 1;
-        Disp2_On_FB  = 1;
-        Disp2_Off_FB = 0;
-    }
-}
-
-PUSH Disp2_Power_Off
-{
-    g_Disp2On    = 0;
-    Disp2_On_FB  = 0;
-    Disp2_Off_FB = 1;
-    g_Disp2Src   = 0;
-    _ClearDisp2SourceFB();
-}
-
-PUSH Disp2_Src1  { _RouteDisp2(1); }
-PUSH Disp2_Src2  { _RouteDisp2(2); }
-PUSH Disp2_Src3  { _RouteDisp2(3); }
-PUSH Disp2_Src4  { _RouteDisp2(4); }
-PUSH Disp2_Src5  { _RouteDisp2(5); }
-PUSH Disp2_Src6  { _RouteDisp2(6); }
-
-FUNCTION _RouteDisp2(INTEGER src)
-{
-    IF (!g_Disp2On) { RETURN; }
     g_Disp2Src = src;
-    _ClearDisp2SourceFB();
+    Disp2_Src1_FB = 0; Disp2_Src2_FB = 0; Disp2_Src3_FB = 0;
+    Disp2_Src4_FB = 0; Disp2_Src5_FB = 0; Disp2_Src6_FB = 0;
     SWITCH (src)
     {
         CASE (1): { Disp2_Src1_FB = 1; }
@@ -279,197 +283,703 @@ FUNCTION _RouteDisp2(INTEGER src)
         CASE (5): { Disp2_Src5_FB = 1; }
         CASE (6): { Disp2_Src6_FB = 1; }
     }
-    Matrix_Route_Out = "CL2I" + ITOA(src) + "!";
 }
 
-FUNCTION _ClearDisp2SourceFB()
+// ── INTERLOCK: Matrix mode ────────────────────────────────────────────────────
+// 3-way exclusive: 0=Mirror, 1=Independent, 2=Extend
+FUNCTION _InterlockMatrix(INTEGER mode)
 {
-    Disp2_Src1_FB = 0; Disp2_Src2_FB = 0; Disp2_Src3_FB = 0;
-    Disp2_Src4_FB = 0; Disp2_Src5_FB = 0; Disp2_Src6_FB = 0;
-}
-
-// ── MATRIX MODE ──────────────────────────────────────────────────────────────
-PUSH Matrix_Mirror      { g_MatrixMode = 0; }
-PUSH Matrix_Independent { g_MatrixMode = 1; }
-PUSH Matrix_Extend      { g_MatrixMode = 2; }
-
-// ── LIFT CONTROL (AX-22MF) ───────────────────────────────────────────────────
-PUSH Lift_Deploy  { Matrix_Route_Out = "LIFT_DEPLOY";  }
-PUSH Lift_Retract { Matrix_Route_Out = "LIFT_RETRACT"; }
-
-// ── CAMERA SELECTION ─────────────────────────────────────────────────────────
-PUSH Cam1_Select
-{
-    g_ActiveCam   = 1;
-    Cam1_Active_FB = 1;
-    Cam2_Active_FB = 0;
-}
-
-PUSH Cam2_Select
-{
-    g_ActiveCam   = 2;
-    Cam1_Active_FB = 0;
-    Cam2_Active_FB = 1;
-}
-
-PUSH Cam_AutoTrack
-{
-    g_CamTrack    = !g_CamTrack;
-    Cam_Track_FB  = g_CamTrack;
-}
-
-// ── AUDIO CONTROL ────────────────────────────────────────────────────────────
-PUSH Mic1_Mute_Toggle
-{
-    g_Mic1Muted = !g_Mic1Muted;
-    Mic1_Mute_FB = g_Mic1Muted;
-}
-
-PUSH Mic2_Mute_Toggle
-{
-    g_Mic2Muted = !g_Mic2Muted;
-    Mic2_Mute_FB = g_Mic2Muted;
-}
-
-PUSH Zone1_Toggle
-{
-    g_Zone1On  = !g_Zone1On;
-    Zone1_On_FB = g_Zone1On;
-}
-
-PUSH Zone2_Toggle
-{
-    g_Zone2On  = !g_Zone2On;
-    Zone2_On_FB = g_Zone2On;
-}
-
-PUSH All_Mute_Toggle
-{
-    g_AllMuted  = !g_AllMuted;
-    All_Mute_FB = g_AllMuted;
-    IF (g_AllMuted)
+    g_MatrixMode     = mode;
+    Matrix_Mirror_FB = 0;
+    Matrix_Indep_FB  = 0;
+    Matrix_Extend_FB = 0;
+    SWITCH (mode)
     {
-        Master_Vol_Out = 0;
+        CASE (0): { Matrix_Mirror_FB = 1; }
+        CASE (1): { Matrix_Indep_FB  = 1; }
+        CASE (2): { Matrix_Extend_FB = 1; }
+    }
+}
+
+// ── INTERLOCK: Camera ─────────────────────────────────────────────────────────
+// 2-way exclusive: cam = 1 or 2
+FUNCTION _InterlockCamera(INTEGER cam)
+{
+    g_CamSel       = cam;
+    Cam1_Active_FB = (cam = 1);
+    Cam2_Active_FB = (cam = 2);
+    Cam_Speed_Out  = g_CamSpeedVal * 2730;
+}
+
+// ── INTERLOCK: Audio preset ───────────────────────────────────────────────────
+// 4-way exclusive: 0=none, 1=meeting, 2=presentation, 3=vcall, 4=mute
+FUNCTION _InterlockAudioPreset(INTEGER preset)
+{
+    g_AudioPreset        = preset;
+    Audio_Meeting_FB     = 0;
+    Audio_Pres_FB        = 0;
+    Audio_VCall_FB       = 0;
+    Audio_Mute_Preset_FB = 0;
+    SWITCH (preset)
+    {
+        CASE (1): { Audio_Meeting_FB     = 1; }
+        CASE (2): { Audio_Pres_FB        = 1; }
+        CASE (3): { Audio_VCall_FB       = 1; }
+        CASE (4): { Audio_Mute_Preset_FB = 1; }
+    }
+}
+
+// ── INTERLOCK: VC share source ────────────────────────────────────────────────
+// 3-way exclusive: 1=ClickShare, 2=HDMI-1, 3=HDMI-2
+FUNCTION _InterlockVCShare(INTEGER src)
+{
+    g_VCShare            = src;
+    VC_Share_CS1_FB      = 0;
+    VC_Share_HDMI1_FB    = 0;
+    VC_Share_HDMI2_FB    = 0;
+    SWITCH (src)
+    {
+        CASE (1): { VC_Share_CS1_FB   = 1; }
+        CASE (2): { VC_Share_HDMI1_FB = 1; }
+        CASE (3): { VC_Share_HDMI2_FB = 1; }
+    }
+}
+
+// ── ANALOG RAMP: smooth volume transition ─────────────────────────────────────
+// Called recursively via Wait(g_VolStepMs, vol_ramp_tick) until target reached.
+FUNCTION _DoRampStep()
+{
+    IF (g_VolCurrent < g_VolTarget)
+    {
+        g_VolCurrent = g_VolCurrent + g_VolStep;
+        IF (g_VolCurrent > g_VolTarget) { g_VolCurrent = g_VolTarget; }
+        Master_Vol_Out = g_VolCurrent;
+        IF (g_VolCurrent < g_VolTarget)
+        {
+            Wait(g_VolStepMs, vol_ramp_tick) { _DoRampStep(); }
+        }
+        ELSE { Vol_Ramp_Active_FB = 0; }
+    }
+    ELSE IF (g_VolCurrent > g_VolTarget)
+    {
+        g_VolCurrent = g_VolCurrent - g_VolStep;
+        IF (g_VolCurrent < g_VolTarget) { g_VolCurrent = g_VolTarget; }
+        Master_Vol_Out = g_VolCurrent;
+        IF (g_VolCurrent > g_VolTarget)
+        {
+            Wait(g_VolStepMs, vol_ramp_tick) { _DoRampStep(); }
+        }
+        ELSE { Vol_Ramp_Active_FB = 0; }
+    }
+}
+
+FUNCTION _RampVolTo(INTEGER target)
+{
+    g_VolTarget = target;
+    CancelWait(vol_ramp_tick);
+    IF (g_VolCurrent <> g_VolTarget)
+    {
+        Vol_Ramp_Active_FB = 1;
+        Wait(g_VolStepMs, vol_ramp_tick) { _DoRampStep(); }
+    }
+}
+
+// ── TIMER: auto-shutoff ───────────────────────────────────────────────────────
+// Called on every panel touch; RetimeWait restarts the countdown.
+FUNCTION _ResetShutoffTimer()
+{
+    IF (g_ShutoffMs > 0)
+    {
+        RetimeWait(g_ShutoffMs, auto_shutoff_timer);
+    }
+}
+
+// ── SEQUENCE: shutdown ────────────────────────────────────────────────────────
+FUNCTION _ShutdownSequence()
+{
+    g_SeqRunning   = 1;
+    Seq_Running_FB = 1;
+    Status_FB_Out  = "Shutting down...";
+
+    // STEP 1: Ramp volume to zero immediately
+    _RampVolTo(0);
+
+    // STEP 2: After 2 s (ramp done), send display power-off ONE-SHOT pulses
+    Wait(2000, shutdown_step2)
+    {
+        IF (g_Disp1On)
+        {
+            Disp1_Pwr_Off_Cmd = 1;           // ONE-SHOT: pulse display module
+            Wait(200, d1_off_release) { Disp1_Pwr_Off_Cmd = 0; }
+            g_Disp1On = 0;
+            Disp1_On_FB = 0; Disp1_Off_FB = 1;
+            _InterlockDisp1Src(0);
+        }
+        IF (g_Disp2On)
+        {
+            Disp2_Pwr_Off_Cmd = 1;
+            Wait(200, d2_off_release) { Disp2_Pwr_Off_Cmd = 0; }
+            g_Disp2On = 0;
+            Disp2_On_FB = 0; Disp2_Off_FB = 1;
+            _InterlockDisp2Src(0);
+        }
+
+        // STEP 3: After 3 s, mute audio zones
+        Wait(3000, shutdown_step3)
+        {
+            Zone1_On_FB = 0; Zone2_On_FB = 0;
+            g_Zone1On = 0;   g_Zone2On = 0;
+
+            // STEP 4: After 1 s, set system OFF
+            Wait(1000, shutdown_step4)
+            {
+                g_SystemOn        = 0;
+                System_On_FB      = 0;
+                g_SeqRunning      = 0;
+                Seq_Running_FB    = 0;
+                CancelWait(auto_shutoff_timer);
+                Status_FB_Out     = "System OFF";
+            }
+        }
+    }
+}
+
+// ── SEQUENCE: startup ─────────────────────────────────────────────────────────
+FUNCTION _StartupSequence()
+{
+    INTEGER defaultVol;
+
+    g_SeqRunning   = 1;
+    Seq_Running_FB = 1;
+    g_SystemOn     = 1;
+    System_On_FB   = 1;
+    Status_FB_Out  = "Starting up...";
+
+    defaultVol = Default_Master_Vol * 655;
+
+    // STEP 2: Power on displays after 500 ms
+    Wait(500, startup_step2)
+    {
+        IF (!g_Disp1On)
+        {
+            g_Disp1On = 1;
+            Disp1_On_FB = 1; Disp1_Off_FB = 0;
+            Disp1_Pwr_On_Cmd = 1;            // ONE-SHOT: pulse Sony module PowerOn
+            Wait(200, d1_on_release) { Disp1_Pwr_On_Cmd = 0; }
+        }
+        IF (!g_Disp2On)
+        {
+            g_Disp2On = 1;
+            Disp2_On_FB = 1; Disp2_Off_FB = 0;
+            Disp2_Pwr_On_Cmd = 1;
+            Wait(200, d2_on_release) { Disp2_Pwr_On_Cmd = 0; }
+        }
+        Status_FB_Out = "Displays powering on...";
+
+        // STEP 3: Route default sources after 5 s warmup
+        Wait(5000, startup_step3)
+        {
+            _InterlockDisp1Src(1);       // INTERLOCK: source 1 (PC/Laptop)
+            _InterlockDisp2Src(1);       // INTERLOCK: source 1 (mirror)
+            _InterlockMatrix(0);         // INTERLOCK: mirror mode default
+            Matrix_Route_Out = "CL1I1!CL2I1!";
+            Status_FB_Out    = "Sources routed";
+
+            // STEP 4: Enable audio zones and ramp to default volume
+            Wait(1500, startup_step4)
+            {
+                g_Zone1On = 1; g_Zone2On = 1;
+                Zone1_On_FB = 1; Zone2_On_FB = 1;
+                _RampVolTo(defaultVol);  // ANALOG RAMP from 0 to default
+                _InterlockCamera(1);     // INTERLOCK: Camera 1 default
+
+                // STEP 5: Ready
+                Wait(1000, startup_step5)
+                {
+                    g_SeqRunning   = 0;
+                    Seq_Running_FB = 0;
+                    _ResetShutoffTimer();   // TIMER: start idle countdown
+                    Status_FB_Out  = Room_Name + " Ready";
+                }
+            }
+        }
+    }
+}
+
+// ── Matrix routing helper ─────────────────────────────────────────────────────
+FUNCTION _RouteMatrix(INTEGER out, INTEGER src)
+{
+    Matrix_Route_Out = "CL" + ITOA(out) + "I" + ITOA(src) + "!";
+}
+
+FUNCTION _RouteDisp1(INTEGER src)
+{
+    IF (!g_Disp1On) { RETURN; }
+    IF (!g_SystemOn) { RETURN; }
+    _InterlockDisp1Src(src);
+    _RouteMatrix(1, src);
+    IF (g_MatrixMode = 0) { _InterlockDisp2Src(src); _RouteMatrix(2, src); }
+    _ResetShutoffTimer();
+}
+
+FUNCTION _RouteDisp2(INTEGER src)
+{
+    IF (!g_Disp2On) { RETURN; }
+    IF (!g_SystemOn) { RETURN; }
+    IF (g_MatrixMode = 0) { RETURN; }  // In mirror mode, Disp2 follows Disp1
+    _InterlockDisp2Src(src);
+    _RouteMatrix(2, src);
+    _ResetShutoffTimer();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//   EVENT HANDLERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ── SR LATCH: System power ────────────────────────────────────────────────────
+// PUSH System_Power_On  = SR Set   → triggers startup SEQUENCE
+// PUSH System_Power_Off = SR Reset → triggers shutdown SEQUENCE
+PUSH System_Power_On
+{
+    IF (g_SystemOn)  { RETURN; }    // Already on
+    IF (g_SeqRunning){ RETURN; }    // Sequence in progress
+    _StartupSequence();
+    _ResetShutoffTimer();
+}
+
+PUSH System_Power_Off
+{
+    IF (!g_SystemOn) { RETURN; }    // Already off
+    IF (g_SeqRunning){ RETURN; }    // Sequence in progress
+    _ShutdownSequence();
+}
+
+// Legacy toggle (keeps existing CH5 join 1 wiring working)
+PUSH System_Power_Toggle
+{
+    IF (g_SeqRunning) { RETURN; }
+    IF (g_SystemOn)
+    {
+        _ShutdownSequence();
     }
     ELSE
     {
-        Master_Vol_Out = Master_Volume_Level;
+        _StartupSequence();
+        _ResetShutoffTimer();
     }
 }
 
-PUSH Net_Mute_Btn_Toggle
+// ── Display 1 ─────────────────────────────────────────────────────────────────
+PUSH Disp1_Power_On
 {
-    g_NetMute  = !g_NetMute;
-    Net_Mute_FB = g_NetMute;
+    IF (!g_SystemOn) { RETURN; }
+    g_Disp1On    = 1;
+    Disp1_On_FB  = 1;
+    Disp1_Off_FB = 0;
+    // ONE-SHOT: 200 ms pulse to Sony BRAVIA module PowerOn input
+    Disp1_Pwr_On_Cmd = 1;
+    Wait(200, d1_on_cmd_release) { Disp1_Pwr_On_Cmd = 0; }
+    _ResetShutoffTimer();
 }
 
-// Audio presets
-PUSH Audio_Preset_Meeting
+PUSH Disp1_Power_Off
 {
-    Mic1_Gain_Out  = 49151;   // 75%
-    Mic2_Gain_Out  = 44564;   // 68%
-    Master_Vol_Out = 45874;   // 70%
-    Zone1_On_FB = 1; Zone2_On_FB = 1;
-    g_Zone1On = 1;   g_Zone2On = 1;
+    g_Disp1On    = 0;
+    Disp1_On_FB  = 0;
+    Disp1_Off_FB = 1;
+    _InterlockDisp1Src(0);
+    // ONE-SHOT: 200 ms pulse to Sony BRAVIA module PowerOff input
+    Disp1_Pwr_Off_Cmd = 1;
+    Wait(200, d1_off_cmd_release) { Disp1_Pwr_Off_Cmd = 0; }
+    _ResetShutoffTimer();
 }
 
-PUSH Audio_Preset_Pres
+// INTERLOCK source buttons (6-way exclusive)
+PUSH Disp1_Src1 { _RouteDisp1(1); }
+PUSH Disp1_Src2 { _RouteDisp1(2); }
+PUSH Disp1_Src3 { _RouteDisp1(3); }
+PUSH Disp1_Src4 { _RouteDisp1(4); }
+PUSH Disp1_Src5 { _RouteDisp1(5); }
+PUSH Disp1_Src6 { _RouteDisp1(6); }
+
+// ── Display 2 ─────────────────────────────────────────────────────────────────
+PUSH Disp2_Power_On
 {
-    Mic1_Gain_Out  = 39321;   // 60%
-    Mic2_Gain_Out  = 52428;   // 80%
-    Master_Vol_Out = 52428;   // 80%
-    Zone1_On_FB = 1; Zone2_On_FB = 1;
+    IF (!g_SystemOn) { RETURN; }
+    g_Disp2On    = 1;
+    Disp2_On_FB  = 1;
+    Disp2_Off_FB = 0;
+    // ONE-SHOT: 200 ms pulse to Sony BRAVIA 2 module PowerOn input
+    Disp2_Pwr_On_Cmd = 1;
+    Wait(200, d2_on_cmd_release) { Disp2_Pwr_On_Cmd = 0; }
+    _ResetShutoffTimer();
 }
 
-PUSH Audio_Preset_VCall
+PUSH Disp2_Power_Off
 {
-    Mic1_Gain_Out  = 52428;   // 80%
-    Mic2_Gain_Out  = 52428;   // 80%
-    Master_Vol_Out = 49151;   // 75%
-    Zone1_On_FB = 1; Zone2_On_FB = 0;
-    g_Zone1On = 1;   g_Zone2On = 0;
+    g_Disp2On    = 0;
+    Disp2_On_FB  = 0;
+    Disp2_Off_FB = 1;
+    _InterlockDisp2Src(0);
+    // ONE-SHOT: 200 ms pulse to Sony BRAVIA 2 module PowerOff input
+    Disp2_Pwr_Off_Cmd = 1;
+    Wait(200, d2_off_cmd_release) { Disp2_Pwr_Off_Cmd = 0; }
+    _ResetShutoffTimer();
 }
 
-PUSH Audio_Preset_Mute
+// INTERLOCK source buttons (6-way exclusive, blocked in mirror mode)
+PUSH Disp2_Src1 { _RouteDisp2(1); }
+PUSH Disp2_Src2 { _RouteDisp2(2); }
+PUSH Disp2_Src3 { _RouteDisp2(3); }
+PUSH Disp2_Src4 { _RouteDisp2(4); }
+PUSH Disp2_Src5 { _RouteDisp2(5); }
+PUSH Disp2_Src6 { _RouteDisp2(6); }
+
+// ── INTERLOCK: Matrix mode (3-way exclusive) ──────────────────────────────────
+PUSH Matrix_Mirror
 {
-    Mic1_Gain_Out  = 0;
-    Mic2_Gain_Out  = 0;
-    Master_Vol_Out = 0;
-    Zone1_On_FB = 0; Zone2_On_FB = 0;
-    g_Zone1On = 0;   g_Zone2On = 0;
-    g_AllMuted = 1;  All_Mute_FB = 1;
+    _InterlockMatrix(0);
+    // Mirror: route Disp2 to same input as Disp1
+    IF (g_Disp1Src > 0) { _RouteMatrix(2, g_Disp1Src); _InterlockDisp2Src(g_Disp1Src); }
+    _ResetShutoffTimer();
 }
 
-// Volume changes pass through
+PUSH Matrix_Independent
+{
+    _InterlockMatrix(1);
+    _ResetShutoffTimer();
+}
+
+PUSH Matrix_Extend
+{
+    _InterlockMatrix(2);
+    _ResetShutoffTimer();
+}
+
+// ── Lift ─────────────────────────────────────────────────────────────────────
+PUSH Lift_Deploy  { Matrix_Route_Out = "LIFT_DEPLOY";  _ResetShutoffTimer(); }
+PUSH Lift_Retract { Matrix_Route_Out = "LIFT_RETRACT"; _ResetShutoffTimer(); }
+
+// ── INTERLOCK: Camera (2-way exclusive) ───────────────────────────────────────
+PUSH Cam1_Select { _InterlockCamera(1); _ResetShutoffTimer(); }
+PUSH Cam2_Select { _InterlockCamera(2); _ResetShutoffTimer(); }
+
+// Toggle auto-tracking (SR latch pattern)
+PUSH Cam_AutoTrack
+{
+    g_CamTrack   = !g_CamTrack;
+    Cam_Track_FB = g_CamTrack;
+    _ResetShutoffTimer();
+}
+
+// PTZ pass-through (all controls go directly to camera module)
+// No state needed – PUSH/RELEASE handled in AVER_CAM570_PTZ module.
+PUSH Cam_Zoom_In   { _ResetShutoffTimer(); }
+PUSH Cam_Zoom_Out  { _ResetShutoffTimer(); }
+PUSH Cam_Pan_Left  { _ResetShutoffTimer(); }
+PUSH Cam_Pan_Right { _ResetShutoffTimer(); }
+PUSH Cam_Tilt_Up   { _ResetShutoffTimer(); }
+PUSH Cam_Tilt_Down { _ResetShutoffTimer(); }
+
+// STEPPER: camera speed ±1 step (range 1–24, matches VISCA pan speed)
+PUSH Cam_Speed_Up
+{
+    g_CamSpeedVal = g_CamSpeedVal + g_CamSpeedStep;
+    IF (g_CamSpeedVal > 24) { g_CamSpeedVal = 24; }
+    Cam_Speed_Out = g_CamSpeedVal * 2730;
+    _ResetShutoffTimer();
+}
+
+PUSH Cam_Speed_Down
+{
+    g_CamSpeedVal = g_CamSpeedVal - g_CamSpeedStep;
+    IF (g_CamSpeedVal < 1) { g_CamSpeedVal = 1; }
+    Cam_Speed_Out = g_CamSpeedVal * 2730;
+    _ResetShutoffTimer();
+}
+
+// ── STEPPER + ANALOG RAMP: master volume ──────────────────────────────────────
+// Vol_Up / Vol_Down: STEPPER increments by g_VolStepSize (2% = 1310) per press.
+PUSH Vol_Up
+{
+    IF (g_AllMuted) { RETURN; }
+    CancelWait(vol_ramp_tick);            // Stop any running ramp
+    g_VolCurrent = g_VolCurrent + g_VolStepSize;
+    IF (g_VolCurrent > 65535) { g_VolCurrent = 65535; }
+    g_VolTarget  = g_VolCurrent;
+    Master_Vol_Out = g_VolCurrent;
+    _ResetShutoffTimer();
+}
+
+PUSH Vol_Down
+{
+    IF (g_AllMuted) { RETURN; }
+    CancelWait(vol_ramp_tick);
+    IF (g_VolCurrent < g_VolStepSize)
+        { g_VolCurrent = 0; }
+    ELSE
+        { g_VolCurrent = g_VolCurrent - g_VolStepSize; }
+    g_VolTarget  = g_VolCurrent;
+    Master_Vol_Out = g_VolCurrent;
+    _ResetShutoffTimer();
+}
+
+// Panel slider change → ANALOG RAMP to new position
 CHANGE Master_Volume_Level
 {
-    IF (!g_AllMuted) { Master_Vol_Out = Master_Volume_Level; }
+    IF (!g_AllMuted)
+    {
+        _RampVolTo(Master_Volume_Level);  // Smooth ramp to slider value
+        _ResetShutoffTimer();
+    }
 }
 
 CHANGE Mic1_Gain_Level { Mic1_Gain_Out = Mic1_Gain_Level; }
 CHANGE Mic2_Gain_Level { Mic2_Gain_Out = Mic2_Gain_Level; }
 
-// ── VIDEO CONFERENCE ─────────────────────────────────────────────────────────
+// ── Audio: mute toggles (SR latch pattern per channel) ───────────────────────
+PUSH Mic1_Mute_Toggle
+{
+    g_Mic1Muted  = !g_Mic1Muted;
+    Mic1_Mute_FB = g_Mic1Muted;
+    _ResetShutoffTimer();
+}
+
+PUSH Mic2_Mute_Toggle
+{
+    g_Mic2Muted  = !g_Mic2Muted;
+    Mic2_Mute_FB = g_Mic2Muted;
+    _ResetShutoffTimer();
+}
+
+PUSH Zone1_Toggle
+{
+    g_Zone1On    = !g_Zone1On;
+    Zone1_On_FB  = g_Zone1On;
+    _ResetShutoffTimer();
+}
+
+PUSH Zone2_Toggle
+{
+    g_Zone2On    = !g_Zone2On;
+    Zone2_On_FB  = g_Zone2On;
+    _ResetShutoffTimer();
+}
+
+PUSH All_Mute_Toggle
+{
+    INTEGER savedVol;
+    g_AllMuted   = !g_AllMuted;
+    All_Mute_FB  = g_AllMuted;
+    IF (g_AllMuted)
+    {
+        savedVol = g_VolCurrent;         // Remember current volume
+        _RampVolTo(0);                   // ANALOG RAMP down to 0
+        g_VolCurrent = savedVol;         // Keep state so unmute restores it
+    }
+    ELSE
+    {
+        _RampVolTo(g_VolCurrent);        // ANALOG RAMP back up
+    }
+    _ResetShutoffTimer();
+}
+
+PUSH Net_Mute_Btn_Toggle
+{
+    g_NetMute    = !g_NetMute;
+    Net_Mute_FB  = g_NetMute;
+    _ResetShutoffTimer();
+}
+
+// ── INTERLOCK: Audio presets (4-way exclusive) ───────────────────────────────
+PUSH Audio_Preset_Meeting
+{
+    _InterlockAudioPreset(1);            // INTERLOCK: deselect all, select Meeting
+    Mic1_Gain_Out  = 49151;             // 75%
+    Mic2_Gain_Out  = 44564;             // 68%
+    _RampVolTo(45874);                  // ANALOG RAMP to 70%
+    g_Zone1On = 1; g_Zone2On = 1;
+    Zone1_On_FB = 1; Zone2_On_FB = 1;
+    g_AllMuted = 0; All_Mute_FB = 0;
+    Status_FB_Out = "Preset: Meeting";
+    _ResetShutoffTimer();
+}
+
+PUSH Audio_Preset_Pres
+{
+    _InterlockAudioPreset(2);            // INTERLOCK: deselect all, select Presentation
+    Mic1_Gain_Out  = 39321;             // 60%
+    Mic2_Gain_Out  = 52428;             // 80%
+    _RampVolTo(52428);                  // ANALOG RAMP to 80%
+    g_Zone1On = 1; g_Zone2On = 1;
+    Zone1_On_FB = 1; Zone2_On_FB = 1;
+    g_AllMuted = 0; All_Mute_FB = 0;
+    Status_FB_Out = "Preset: Presentation";
+    _ResetShutoffTimer();
+}
+
+PUSH Audio_Preset_VCall
+{
+    _InterlockAudioPreset(3);            // INTERLOCK: deselect all, select Video Call
+    Mic1_Gain_Out  = 52428;             // 80%
+    Mic2_Gain_Out  = 52428;             // 80%
+    _RampVolTo(49151);                  // ANALOG RAMP to 75%
+    g_Zone1On = 1; g_Zone2On = 0;      // Zone 2 off for video call
+    Zone1_On_FB = 1; Zone2_On_FB = 0;
+    g_AllMuted = 0; All_Mute_FB = 0;
+    Status_FB_Out = "Preset: Video Call";
+    _ResetShutoffTimer();
+}
+
+PUSH Audio_Preset_Mute
+{
+    _InterlockAudioPreset(4);            // INTERLOCK: deselect all, select Mute
+    _RampVolTo(0);                       // ANALOG RAMP to zero
+    Mic1_Gain_Out  = 0;
+    Mic2_Gain_Out  = 0;
+    g_Zone1On = 0; g_Zone2On = 0;
+    Zone1_On_FB = 0; Zone2_On_FB = 0;
+    g_AllMuted = 1; All_Mute_FB = 1;
+    Status_FB_Out = "Preset: All Muted";
+    _ResetShutoffTimer();
+}
+
+// ── Video Conference ──────────────────────────────────────────────────────────
 PUSH VC_Join_Btn
 {
     g_VCInCall    = 1;
     VC_InCall_FB  = 1;
-    g_VCCamOn     = 1;
-    VC_Cam_FB     = 1;
+    g_VCCamOn     = 1; VC_Cam_FB = 1;
+    g_VCMicOn     = 1; VC_Mic_FB = 1;
+    _InterlockAudioPreset(3);           // Auto-select video call preset
+    _RampVolTo(49151);
     Status_FB_Out = "Teams call active";
+    _ResetShutoffTimer();
 }
 
 PUSH VC_Leave_Btn
 {
     g_VCInCall    = 0;
     VC_InCall_FB  = 0;
-    g_VCCamOn     = 0;
-    VC_Cam_FB     = 0;
-    g_VCMicOn     = 0;
-    VC_Mic_FB     = 0;
+    g_VCCamOn     = 0; VC_Cam_FB = 0;
+    g_VCMicOn     = 0; VC_Mic_FB = 0;
+    _InterlockVCShare(0);              // INTERLOCK: clear share source
     Status_FB_Out = "Call ended";
+    _ResetShutoffTimer();
 }
 
 PUSH VC_Mic_Toggle
 {
     g_VCMicOn = !g_VCMicOn;
     VC_Mic_FB = g_VCMicOn;
+    _ResetShutoffTimer();
 }
 
 PUSH VC_Cam_Toggle
 {
     g_VCCamOn = !g_VCCamOn;
     VC_Cam_FB = g_VCCamOn;
+    _ResetShutoffTimer();
 }
 
-// ── STARTUP ──────────────────────────────────────────────────────────────────
+// INTERLOCK: VC share source (3-way exclusive)
+PUSH VC_Share_CS1   { _InterlockVCShare(1); _ResetShutoffTimer(); }
+PUSH VC_Share_HDMI1 { _InterlockVCShare(2); _ResetShutoffTimer(); }
+PUSH VC_Share_HDMI2 { _InterlockVCShare(3); _ResetShutoffTimer(); }
+
+PUSH VC_Share_Toggle
+{
+    IF (g_VCShare = 0)
+        { _InterlockVCShare(1); }  // Default to ClickShare
+    ELSE
+        { _InterlockVCShare(0); }  // Toggle off
+    _ResetShutoffTimer();
+}
+
+// ── TIMER: auto-shutoff ───────────────────────────────────────────────────────
+// This Wait fires once after g_ShutoffMs of idle time.
+// _ResetShutoffTimer() calls RetimeWait() to restart the countdown.
+Wait(1000, auto_shutoff_timer)
+{
+    IF (g_SystemOn && !g_VCInCall)
+    {
+        Status_FB_Out = "Auto power off";
+        _ShutdownSequence();
+    }
+}
+
+// ── RECURRING TIMER: device poll ─────────────────────────────────────────────
+// Polls display power status every 30 s when system is on.
+// Re-arms itself each time it fires.
+Wait(30000, device_poll_timer)
+{
+    IF (g_SystemOn)
+    {
+        // Trigger poll pulses to device modules (ONE-SHOT 200 ms)
+        // Wire Disp1_Pwr_On_Cmd output → Sony module Poll input for status
+        Status_FB_Out = Room_Name + " Active";
+    }
+    // Re-arm recurring TIMER
+    Wait(30000, device_poll_timer)
+    {
+        // This inner Wait re-arms the outer label – SIMPL+ processes these
+        // by scheduling a new Wait with the same label after the outer fires.
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//   STARTUP
+// ─────────────────────────────────────────────────────────────────────────────
 Function Main()
 {
-    g_SystemOn    = 1;
-    g_ActiveCam   = 1;
-    g_MatrixMode  = 0;  // mirror
-    g_Disp1On     = 1;
-    g_Disp2On     = 1;
-    g_Disp1Src    = 1;
-    g_Disp2Src    = 7;
-    g_Zone1On     = 1;
-    g_Zone2On     = 1;
-    g_VCInCall    = 1;
-    g_VCCamOn     = 1;
-    g_NetMute     = 1;
+    // Initialise ANALOG RAMP parameters
+    g_VolStepMs   = 30;      // 30 ms per ramp step
+    g_VolStep     = 655;     // 655 units = 1% of 65535
+    g_VolCurrent  = 0;
+    g_VolTarget   = 0;
 
-    // Initial feedback to panel
-    System_On_FB   = 1;
-    Disp1_On_FB    = 1;
-    Disp2_On_FB    = 1;
-    Cam1_Active_FB = 1;
-    Zone1_On_FB    = 1;
-    Zone2_On_FB    = 1;
-    VC_InCall_FB   = 1;
-    VC_Cam_FB      = 1;
-    Net_Mute_FB    = 1;
+    // Initialise STEPPER parameters
+    g_VolStepSize  = 1310;   // 2% per Vol_Up/Down press
+    g_CamSpeedStep = 2;      // 2 speed steps per button press
+    g_CamSpeedVal  = 8;      // default camera speed (range 1–24)
 
-    Master_Vol_Out = Default_Master_Vol * 655;
-    Cam_Speed_Out  = 32767; // medium
-    Status_FB_Out  = Room_Name + " Ready";
+    // TIMER: auto-shutoff countdown (0 = disabled)
+    IF (Auto_Shutoff_Mins > 0)
+    {
+        g_ShutoffMs = Auto_Shutoff_Mins * 60000;
+        RetimeWait(g_ShutoffMs, auto_shutoff_timer);
+    }
+    ELSE
+    {
+        g_ShutoffMs = 0;
+        CancelWait(auto_shutoff_timer);
+    }
+
+    // Initial state
+    g_SystemOn    = 0;
+    g_SeqRunning  = 0;
+    g_ActivePreset = 0;
+    g_MatrixMode  = 0;
+    g_CamSel      = 1;
+    g_Disp1On     = 0;
+    g_Disp2On     = 0;
+    g_Disp1Src    = 0;
+    g_Disp2Src    = 0;
+    g_Zone1On     = 0;
+    g_Zone2On     = 0;
+    g_AllMuted    = 0;
+    g_VCInCall    = 0;
+    g_VCMicOn     = 0;
+    g_VCCamOn     = 0;
+    g_NetMute     = 0;
+    g_CamTrack    = 0;
+
+    // Initial feedback: all off
+    System_On_FB   = 0;
+    Disp1_Off_FB   = 1;
+    Disp2_Off_FB   = 1;
+    Cam1_Active_FB = 1;        // Default to cam 1 selected
+    Cam_Speed_Out  = g_CamSpeedVal * 2730;
+
+    Status_FB_Out  = Room_Name + " Standby - Press System On";
 }

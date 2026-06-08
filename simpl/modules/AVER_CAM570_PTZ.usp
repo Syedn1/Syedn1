@@ -1,37 +1,39 @@
-/*
-==============================================================================
-  AVER CAM570 PTZ Camera Driver
-  File:     AVER_CAM570_PTZ.usp
-  Protocol: VISCA over UDP (port 52381) via Crestron TCP/UDP Client symbol
-
-  HOW TO ADD IN SIMPL WINDOWS:
-  1. Copy to Modules folder
-  2. Insert SIMPL+ Module → "AVER_CAM570_PTZ"
-  3. Add a UDP Client symbol (Program View → Add Symbol → TCP/IP → UDP Client)
-  4. Wire:
-       UDP Client TX  → SerialOut (this module)
-       UDP Client RX  → SerialIn  (this module)
-       Set UDP Client: IP=camera_ip, Port=52381, Protocol=UDP
-
-  AVER CAM570 VISCA UDP Notes:
-  - Commands are raw VISCA bytes over UDP
-  - Sequence number bytes added for UDP VISCA (first 4 bytes of payload)
-  - Camera address byte is always 0x81 for camera #1
-
-  For Auto-Tracking: AVER CAM570 HTTP REST API
-  - PUT http://{ip}/api/v1/camera/tracking  body: {"mode":"presenter"}
-  - This module outputs an HTTP command string for a Crestron HTTP Client
-==============================================================================
-*/
+// AVER CAM570 PTZ Camera Driver
+// Protocol: VISCA over UDP (port 52381)
+//
+// SIMPL LOGIC SYMBOLS IMPLEMENTED
+// ─────────────────────────────────────────────────────────────────────────────
+// INTERLOCK    Preset active feedback: only one of Preset1..4 Active_FB
+//              can be high at a time.  _InterlockPreset(num) clears all
+//              then sets the selected one.
+//
+// ONE-SHOT     Home_Position: pulses Moving_FB high for 2 s then clears it
+//              (the camera reaches home faster than we can poll it).
+//              Preset_Save: confirmation pulse – Moving_FB high 500 ms.
+//              AutoTrack on/off: HTTP command sent as a 1 s ONE-SHOT so the
+//              string output is present long enough for the TCP driver to send.
+//
+// STEPPER      Speed_Up / Speed_Down: adjust g_PanSpd and g_TiltSpd each press
+//              by Speed_Step_Size (1 unit = 1 VISCA speed level).
+//              Range: pan 1–24, tilt 1–20.
+//              The current speeds are reflected on Pan_Speed_FB / Tilt_Speed_FB
+//              analog outputs (scaled 0–65535).
+//
+// TIMER        Activity watchdog: if Moving_FB is left high (button stuck),
+//              a Wait(5000, stuck_watchdog) automatically sends Stop after 5 s.
+//              Auto-tracking heartbeat: while g_AutoTrack is active, a
+//              Wait(60000, track_heartbeat) re-sends the tracking command
+//              every 60 s in case the camera loses the session.
+// ─────────────────────────────────────────────────────────────────────────────
 
 #SYMBOL_NAME "AVER_CAM570_PTZ_v2"
-#HINT "AVER CAM570 PTZ Camera – VISCA over UDP"
-#CATEGORY "12" // Cameras
+#HINT "AVER CAM570 PTZ Camera - VISCA/UDP + SIMPL logic symbols - v2"
+#CATEGORY "12"
 #DEFAULT_VOLATILE
 #ENABLE_STACK_CHECKING
 #ENABLE_TRACE
 
-// ── DIGITAL INPUTS ───────────────────────────────────────────────────────────
+// ── DIGITAL INPUTS ────────────────────────────────────────────────────────────
 DIGITAL_INPUT  Pan_Left,   Pan_Right;
 DIGITAL_INPUT  Tilt_Up,    Tilt_Down;
 DIGITAL_INPUT  Zoom_In,    Zoom_Out;
@@ -39,188 +41,111 @@ DIGITAL_INPUT  Focus_Far,  Focus_Near;
 DIGITAL_INPUT  Focus_Auto;
 DIGITAL_INPUT  Preset_1_Recall, Preset_2_Recall;
 DIGITAL_INPUT  Preset_3_Recall, Preset_4_Recall;
-DIGITAL_INPUT  Preset_Save;       // saves to currently selected slot
+DIGITAL_INPUT  Preset_Save;
 DIGITAL_INPUT  AutoTrack_Toggle;
-DIGITAL_INPUT  Home_Position;     // return to center
+DIGITAL_INPUT  Home_Position;
 
-// ── ANALOG INPUTS ────────────────────────────────────────────────────────────
-ANALOG_INPUT   Pan_Speed;         // 0-65535 → VISCA 0x01-0x18
-ANALOG_INPUT   Tilt_Speed;        // 0-65535 → VISCA 0x01-0x14
-ANALOG_INPUT   Preset_Save_Slot;  // 1-4
+// STEPPER inputs for pan/tilt speed
+DIGITAL_INPUT  Speed_Up;         // STEPPER: increase pan+tilt speed 1 step
+DIGITAL_INPUT  Speed_Down;       // STEPPER: decrease pan+tilt speed 1 step
 
-// ── DIGITAL OUTPUTS ──────────────────────────────────────────────────────────
-DIGITAL_OUTPUT  AutoTrack_FB;
-DIGITAL_OUTPUT  Preset1_Active_FB, Preset2_Active_FB;
-DIGITAL_OUTPUT  Preset3_Active_FB, Preset4_Active_FB;
-DIGITAL_OUTPUT  Moving_FB;
+// ── ANALOG INPUTS ─────────────────────────────────────────────────────────────
+ANALOG_INPUT   Pan_Speed;         // Direct speed override from panel slider
+ANALOG_INPUT   Tilt_Speed;
+ANALOG_INPUT   Preset_Save_Slot;  // 1–8: which slot to save to
 
-// ── ANALOG OUTPUTS ───────────────────────────────────────────────────────────
-ANALOG_OUTPUT   Pan_Pos_FB;     // 0-65535
-ANALOG_OUTPUT   Tilt_Pos_FB;
-ANALOG_OUTPUT   Zoom_Pos_FB;
+// ── DIGITAL OUTPUTS ───────────────────────────────────────────────────────────
+DIGITAL_OUTPUT AutoTrack_FB;
+// INTERLOCK group: only one preset active FB high at a time
+DIGITAL_OUTPUT Preset1_Active_FB, Preset2_Active_FB;
+DIGITAL_OUTPUT Preset3_Active_FB, Preset4_Active_FB;
+DIGITAL_OUTPUT Moving_FB;
+DIGITAL_OUTPUT Home_Active_FB;    // HIGH during home-position ONE-SHOT
 
-// ── STRING I/O ───────────────────────────────────────────────────────────────
-STRING_OUTPUT   SerialOut;       // UDP VISCA bytes
-BUFFER_INPUT    SerialIn[256];   // UDP VISCA response
-STRING_OUTPUT   HTTP_Cmd_Out;    // to HTTP Client for auto-track API
+// ── ANALOG OUTPUTS ────────────────────────────────────────────────────────────
+ANALOG_OUTPUT  Pan_Pos_FB;
+ANALOG_OUTPUT  Tilt_Pos_FB;
+ANALOG_OUTPUT  Zoom_Pos_FB;
+ANALOG_OUTPUT  Pan_Speed_FB;      // STEPPER current speed reflected to panel
+ANALOG_OUTPUT  Tilt_Speed_FB;     // STEPPER current tilt speed reflected to panel
 
-// ── PARAMETERS ───────────────────────────────────────────────────────────────
+// ── STRING I/O ────────────────────────────────────────────────────────────────
+STRING_OUTPUT  SerialOut;         // UDP payload out to VISCA server
+BUFFER_INPUT   SerialIn[256];
+STRING_OUTPUT  HTTP_Cmd_Out;      // REST command for auto-track API
+
+// ── PARAMETERS ────────────────────────────────────────────────────────────────
 STRING_PARAMETER  Camera_IP[16];
-INTEGER_PARAMETER Default_Pan_Speed;    // 1-24, default 8
-INTEGER_PARAMETER Default_Tilt_Speed;  // 1-20, default 6
-INTEGER_PARAMETER Camera_Address;      // VISCA address: 1
+INTEGER_PARAMETER Default_Pan_Speed;    // 1–24 initial pan speed
+INTEGER_PARAMETER Default_Tilt_Speed;  // 1–20 initial tilt speed
+INTEGER_PARAMETER Camera_Address;       // VISCA camera address (1)
+INTEGER_PARAMETER Speed_Step_Size;      // STEPPER step (1 = fine, 2 = coarse)
 
-// ── CONSTANTS ────────────────────────────────────────────────────────────────
-// VISCA command byte sequences (sent as binary strings)
-// Format: <addr> 01 04 xx xx ... FF
-// addr = 0x80 + camera_address (0x81 for cam 1)
-
-STRING_CONSTANT  VISCA_STOP[9]        = "\x81\x01\x06\x01\x08\x06\x03\x03\xFF";
-STRING_CONSTANT  VISCA_ZOOM_STOP[5]   = "\x81\x01\x04\x07\x00\xFF";
-STRING_CONSTANT  VISCA_FOCUS_STOP[5]  = "\x81\x01\x04\x08\x00\xFF";
-STRING_CONSTANT  VISCA_FOCUS_AUTO[6]  = "\x81\x01\x04\x38\x02\xFF";
-STRING_CONSTANT  VISCA_HOME[4]        = "\x81\x01\x06\x04\xFF";
-
-// ── INTERNAL VARS ────────────────────────────────────────────────────────────
-INTEGER g_PanSpeed;     // VISCA byte 0x01-0x18
-INTEGER g_TiltSpeed;    // VISCA byte 0x01-0x14
+// ── INTERNAL VARS ─────────────────────────────────────────────────────────────
 INTEGER g_AutoTrack;
-INTEGER g_ActivePreset;
+INTEGER g_ActivePreset;   // INTERLOCK state: 0=none, 1–4=active preset
 INTEGER g_SaveSlot;
-INTEGER g_SeqNum;       // UDP VISCA sequence counter
+INTEGER g_SeqNum;
+INTEGER g_PanSpd;         // current pan speed (1–24), STEPPER managed
+INTEGER g_TiltSpd;        // current tilt speed (1–20), STEPPER managed
+INTEGER g_SpeedStep;      // STEPPER step size
+STRING  g_ViscaStop[16];
+STRING  g_ZoomStop[16];
+STRING  g_FocusStop[16];
+STRING  g_FocusAuto[16];
+STRING  g_Home[16];
+STRING  g_Cmd[32];
 
-// ── HELPER: Build UDP VISCA packet ───────────────────────────────────────────
-// UDP VISCA adds 8-byte header: type(2) + payload_len(2) + seq_num(4)
+// ── HELPER FUNCTIONS ─────────────────────────────────────────────────────────
+
+// Build and send VISCA over UDP (8-byte header + payload)
 FUNCTION SendVISCA(STRING payload)
 {
     STRING header[8];
     INTEGER pLen;
-    pLen   = LEN(payload);
+    pLen    = LEN(payload);
     g_SeqNum = g_SeqNum + 1;
-    // Header: type=0100 (command), length, sequence number
-    header = "\x01\x00" +
-             CHR(pLen / 256) + CHR(pLen MOD 256) +
-             "\x00\x00" +
-             CHR(g_SeqNum / 256) + CHR(g_SeqNum MOD 256);
+    header  = CHR(1) + CHR(0);
+    header  = header + CHR(pLen / 256) + CHR(pLen MOD 256);
+    header  = header + CHR(0) + CHR(0);
+    header  = header + CHR(g_SeqNum / 256) + CHR(g_SeqNum MOD 256);
     SerialOut = header + payload;
 }
 
-// Scale SIMPL analog (0-65535) to VISCA speed byte
-FUNCTION INTEGER ScalePanSpeed()
+// Calculate VISCA speeds from current g_PanSpd / g_TiltSpd
+FUNCTION CalcSpeeds()
 {
-    INTEGER s;
-    s = Pan_Speed / 2730;     // 0-24
-    IF (s < 1)  { s = 1; }
-    IF (s > 24) { s = 24; }
-    RETURN (s);
+    // Override with panel slider values if non-zero
+    IF (Pan_Speed > 0)
+    {
+        g_PanSpd = Pan_Speed / 2730;
+        IF (g_PanSpd < 1)  { g_PanSpd = 1; }
+        IF (g_PanSpd > 24) { g_PanSpd = 24; }
+    }
+    IF (Tilt_Speed > 0)
+    {
+        g_TiltSpd = Tilt_Speed / 3276;
+        IF (g_TiltSpd < 1)  { g_TiltSpd = 1; }
+        IF (g_TiltSpd > 20) { g_TiltSpd = 20; }
+    }
 }
 
-FUNCTION INTEGER ScaleTiltSpeed()
+// Update analog feedback for current speed STEPPER values
+FUNCTION _UpdateSpeedFB()
 {
-    INTEGER s;
-    s = Tilt_Speed / 3276;    // 0-20
-    IF (s < 1)  { s = 1; }
-    IF (s > 20) { s = 20; }
-    RETURN (s);
+    Pan_Speed_FB  = g_PanSpd  * 2730;
+    Tilt_Speed_FB = g_TiltSpd * 3276;
 }
 
-// ── PAN / TILT ───────────────────────────────────────────────────────────────
-PUSH Pan_Left
+// ── INTERLOCK: preset active ─────────────────────────────────────────────────
+// Clears all preset FBs then sets the one matching num.  num=0 clears all.
+FUNCTION _InterlockPreset(INTEGER num)
 {
-    INTEGER ps, ts;
-    ps = ScalePanSpeed(); ts = ScaleTiltSpeed();
-    // VISCA Pan Left: 81 01 06 01 VV WW 01 03 FF
-    SendVISCA("\x81\x01\x06\x01" + CHR(ps) + CHR(ts) + "\x01\x03\xFF");
-    Moving_FB = 1;
-}
-RELEASE Pan_Left   { SendVISCA(VISCA_STOP); Moving_FB = 0; }
-
-PUSH Pan_Right
-{
-    INTEGER ps, ts;
-    ps = ScalePanSpeed(); ts = ScaleTiltSpeed();
-    // VISCA Pan Right: 81 01 06 01 VV WW 02 03 FF
-    SendVISCA("\x81\x01\x06\x01" + CHR(ps) + CHR(ts) + "\x02\x03\xFF");
-    Moving_FB = 1;
-}
-RELEASE Pan_Right  { SendVISCA(VISCA_STOP); Moving_FB = 0; }
-
-PUSH Tilt_Up
-{
-    INTEGER ps, ts;
-    ps = ScalePanSpeed(); ts = ScaleTiltSpeed();
-    // VISCA Tilt Up: 81 01 06 01 VV WW 03 01 FF
-    SendVISCA("\x81\x01\x06\x01" + CHR(ps) + CHR(ts) + "\x03\x01\xFF");
-    Moving_FB = 1;
-}
-RELEASE Tilt_Up    { SendVISCA(VISCA_STOP); Moving_FB = 0; }
-
-PUSH Tilt_Down
-{
-    INTEGER ps, ts;
-    ps = ScalePanSpeed(); ts = ScaleTiltSpeed();
-    // VISCA Tilt Down: 81 01 06 01 VV WW 03 02 FF
-    SendVISCA("\x81\x01\x06\x01" + CHR(ps) + CHR(ts) + "\x03\x02\xFF");
-    Moving_FB = 1;
-}
-RELEASE Tilt_Down  { SendVISCA(VISCA_STOP); Moving_FB = 0; }
-
-// ── ZOOM ─────────────────────────────────────────────────────────────────────
-PUSH Zoom_In
-{
-    // VISCA Zoom Tele Standard: 81 01 04 07 2V FF  (speed V=0-7)
-    INTEGER zs;
-    zs = ScalePanSpeed() / 3;
-    IF (zs > 7) { zs = 7; }
-    SendVISCA("\x81\x01\x04\x07" + CHR(0x20 + zs) + "\xFF");
-    Moving_FB = 1;
-}
-RELEASE Zoom_In    { SendVISCA(VISCA_ZOOM_STOP); Moving_FB = 0; }
-
-PUSH Zoom_Out
-{
-    INTEGER zs;
-    zs = ScalePanSpeed() / 3;
-    IF (zs > 7) { zs = 7; }
-    SendVISCA("\x81\x01\x04\x07" + CHR(0x30 + zs) + "\xFF");
-    Moving_FB = 1;
-}
-RELEASE Zoom_Out   { SendVISCA(VISCA_ZOOM_STOP); Moving_FB = 0; }
-
-// ── FOCUS ────────────────────────────────────────────────────────────────────
-PUSH Focus_Auto  { SendVISCA(VISCA_FOCUS_AUTO); }
-
-PUSH Focus_Far
-{
-    SendVISCA("\x81\x01\x04\x08\x28\xFF");
-    Moving_FB = 1;
-}
-RELEASE Focus_Far   { SendVISCA(VISCA_FOCUS_STOP); Moving_FB = 0; }
-
-PUSH Focus_Near
-{
-    SendVISCA("\x81\x01\x04\x08\x38\xFF");
-    Moving_FB = 1;
-}
-RELEASE Focus_Near  { SendVISCA(VISCA_FOCUS_STOP); Moving_FB = 0; }
-
-// ── HOME ─────────────────────────────────────────────────────────────────────
-PUSH Home_Position { SendVISCA(VISCA_HOME); }
-
-// ── PRESETS ──────────────────────────────────────────────────────────────────
-// VISCA Preset Recall: 81 01 04 3F 02 PP FF (PP = preset number 0x00-based)
-// VISCA Preset Set:    81 01 04 3F 01 PP FF
-
-PUSH Preset_1_Recall { _RecallPreset(1); }
-PUSH Preset_2_Recall { _RecallPreset(2); }
-PUSH Preset_3_Recall { _RecallPreset(3); }
-PUSH Preset_4_Recall { _RecallPreset(4); }
-
-FUNCTION _RecallPreset(INTEGER num)
-{
-    g_ActivePreset = num;
-    SendVISCA("\x81\x01\x04\x3F\x02" + CHR(num - 1) + "\xFF");
-    _ClearPresetFB();
+    g_ActivePreset     = num;
+    Preset1_Active_FB  = 0;
+    Preset2_Active_FB  = 0;
+    Preset3_Active_FB  = 0;
+    Preset4_Active_FB  = 0;
     SWITCH (num)
     {
         CASE (1): { Preset1_Active_FB = 1; }
@@ -230,80 +155,255 @@ FUNCTION _RecallPreset(INTEGER num)
     }
 }
 
+// Send VISCA preset recall and INTERLOCK the active FB
+FUNCTION _RecallPreset(INTEGER num)
+{
+    _InterlockPreset(num);
+    g_Cmd = CHR(129) + CHR(1) + CHR(4) + CHR(63);
+    g_Cmd = g_Cmd + CHR(2) + CHR(num - 1) + CHR(255);
+    SendVISCA(g_Cmd);
+
+    // ONE-SHOT: clear Moving_FB when VISCA completion response expected (~1 s)
+    Moving_FB = 1;
+    Wait(1000, preset_recall_done)
+    {
+        Moving_FB = 0;  // ONE-SHOT: camera has (likely) finished moving
+    }
+}
+
+// ── ACTIVITY WATCHDOG TIMER ───────────────────────────────────────────────────
+// Restarted on every PTZ key press.  If Moving_FB is still high after 5 s
+// (e.g. operator walked away with key held), send Stop automatically.
+FUNCTION _StartWatchdog()
+{
+    RetimeWait(5000, stuck_watchdog);
+}
+
+Wait(5000, stuck_watchdog)
+{
+    // TIMER: fire Stop if camera is still flagged as moving
+    IF (Moving_FB)
+    {
+        SendVISCA(g_ViscaStop);
+        Moving_FB = 0;
+    }
+}
+
+// ── PAN / TILT ────────────────────────────────────────────────────────────────
+PUSH Pan_Left
+{
+    CalcSpeeds();
+    _InterlockPreset(0);              // INTERLOCK: clear preset FB while moving
+    g_Cmd = CHR(129) + CHR(1) + CHR(6) + CHR(1);
+    g_Cmd = g_Cmd + CHR(g_PanSpd) + CHR(g_TiltSpd) + CHR(1) + CHR(3) + CHR(255);
+    SendVISCA(g_Cmd);
+    Moving_FB = 1;
+    _StartWatchdog();                 // TIMER: watchdog
+}
+RELEASE Pan_Left   { SendVISCA(g_ViscaStop); Moving_FB = 0; CancelWait(stuck_watchdog); }
+
+PUSH Pan_Right
+{
+    CalcSpeeds();
+    _InterlockPreset(0);
+    g_Cmd = CHR(129) + CHR(1) + CHR(6) + CHR(1);
+    g_Cmd = g_Cmd + CHR(g_PanSpd) + CHR(g_TiltSpd) + CHR(2) + CHR(3) + CHR(255);
+    SendVISCA(g_Cmd);
+    Moving_FB = 1;
+    _StartWatchdog();
+}
+RELEASE Pan_Right  { SendVISCA(g_ViscaStop); Moving_FB = 0; CancelWait(stuck_watchdog); }
+
+PUSH Tilt_Up
+{
+    CalcSpeeds();
+    _InterlockPreset(0);
+    g_Cmd = CHR(129) + CHR(1) + CHR(6) + CHR(1);
+    g_Cmd = g_Cmd + CHR(g_PanSpd) + CHR(g_TiltSpd) + CHR(3) + CHR(1) + CHR(255);
+    SendVISCA(g_Cmd);
+    Moving_FB = 1;
+    _StartWatchdog();
+}
+RELEASE Tilt_Up    { SendVISCA(g_ViscaStop); Moving_FB = 0; CancelWait(stuck_watchdog); }
+
+PUSH Tilt_Down
+{
+    CalcSpeeds();
+    _InterlockPreset(0);
+    g_Cmd = CHR(129) + CHR(1) + CHR(6) + CHR(1);
+    g_Cmd = g_Cmd + CHR(g_PanSpd) + CHR(g_TiltSpd) + CHR(3) + CHR(2) + CHR(255);
+    SendVISCA(g_Cmd);
+    Moving_FB = 1;
+    _StartWatchdog();
+}
+RELEASE Tilt_Down  { SendVISCA(g_ViscaStop); Moving_FB = 0; CancelWait(stuck_watchdog); }
+
+// ── ZOOM ──────────────────────────────────────────────────────────────────────
+PUSH Zoom_In
+{
+    INTEGER zs;
+    CalcSpeeds();
+    zs = g_PanSpd / 3;
+    IF (zs < 1) { zs = 1; }
+    IF (zs > 7) { zs = 7; }
+    g_Cmd = CHR(129) + CHR(1) + CHR(4) + CHR(7);
+    g_Cmd = g_Cmd + CHR(32 + zs) + CHR(255);
+    SendVISCA(g_Cmd);
+    Moving_FB = 1;
+    _StartWatchdog();
+}
+RELEASE Zoom_In    { SendVISCA(g_ZoomStop); Moving_FB = 0; CancelWait(stuck_watchdog); }
+
+PUSH Zoom_Out
+{
+    INTEGER zs;
+    CalcSpeeds();
+    zs = g_PanSpd / 3;
+    IF (zs < 1) { zs = 1; }
+    IF (zs > 7) { zs = 7; }
+    g_Cmd = CHR(129) + CHR(1) + CHR(4) + CHR(7);
+    g_Cmd = g_Cmd + CHR(48 + zs) + CHR(255);
+    SendVISCA(g_Cmd);
+    Moving_FB = 1;
+    _StartWatchdog();
+}
+RELEASE Zoom_Out   { SendVISCA(g_ZoomStop); Moving_FB = 0; CancelWait(stuck_watchdog); }
+
+// ── FOCUS ─────────────────────────────────────────────────────────────────────
+PUSH Focus_Auto  { SendVISCA(g_FocusAuto); }
+
+PUSH Focus_Far
+{
+    g_Cmd = CHR(129) + CHR(1) + CHR(4) + CHR(8) + CHR(40) + CHR(255);
+    SendVISCA(g_Cmd);
+    Moving_FB = 1;
+    _StartWatchdog();
+}
+RELEASE Focus_Far  { SendVISCA(g_FocusStop); Moving_FB = 0; CancelWait(stuck_watchdog); }
+
+PUSH Focus_Near
+{
+    g_Cmd = CHR(129) + CHR(1) + CHR(4) + CHR(8) + CHR(56) + CHR(255);
+    SendVISCA(g_Cmd);
+    Moving_FB = 1;
+    _StartWatchdog();
+}
+RELEASE Focus_Near { SendVISCA(g_FocusStop); Moving_FB = 0; CancelWait(stuck_watchdog); }
+
+// ── HOME POSITION ─────────────────────────────────────────────────────────────
+// ONE-SHOT: Home_Active_FB goes high and auto-clears after 2 s
+PUSH Home_Position
+{
+    SendVISCA(g_Home);
+    _InterlockPreset(0);
+    Home_Active_FB = 1;
+    Moving_FB      = 1;
+    // ONE-SHOT: clear after estimated move time
+    Wait(2000, home_done)
+    {
+        Home_Active_FB = 0;
+        Moving_FB      = 0;
+    }
+}
+
+// ── PRESETS (INTERLOCK active FB) ─────────────────────────────────────────────
+PUSH Preset_1_Recall { _RecallPreset(1); }
+PUSH Preset_2_Recall { _RecallPreset(2); }
+PUSH Preset_3_Recall { _RecallPreset(3); }
+PUSH Preset_4_Recall { _RecallPreset(4); }
+
 PUSH Preset_Save
 {
     INTEGER slot;
     slot = Preset_Save_Slot;
     IF (slot < 1) { slot = 1; }
     IF (slot > 8) { slot = 8; }
-    SendVISCA("\x81\x01\x04\x3F\x01" + CHR(slot - 1) + "\xFF");
+    g_Cmd = CHR(129) + CHR(1) + CHR(4) + CHR(63);
+    g_Cmd = g_Cmd + CHR(1) + CHR(slot - 1) + CHR(255);
+    SendVISCA(g_Cmd);
     g_SaveSlot = slot;
+    // ONE-SHOT: confirmation pulse on Moving_FB (500 ms)
+    Moving_FB = 1;
+    Wait(500, preset_save_done) { Moving_FB = 0; }
 }
 
-FUNCTION _ClearPresetFB()
-{
-    Preset1_Active_FB = 0; Preset2_Active_FB = 0;
-    Preset3_Active_FB = 0; Preset4_Active_FB = 0;
-}
-
-// ── AUTO TRACKING ────────────────────────────────────────────────────────────
-// AVER CAM570 tracking via HTTP REST (output command string to HTTP client)
+// ── AUTO TRACKING ─────────────────────────────────────────────────────────────
 PUSH AutoTrack_Toggle
 {
     g_AutoTrack  = !g_AutoTrack;
     AutoTrack_FB = g_AutoTrack;
+
     IF (g_AutoTrack)
     {
-        // Output HTTP PUT command string to Crestron HTTP Client symbol
-        HTTP_Cmd_Out = "PUT http://" + Camera_IP +
-                       "/api/v1/camera/tracking {\"mode\":\"presenter\"}";
+        HTTP_Cmd_Out = "PUT http://" + Camera_IP + "/api/v1/camera/tracking";
+        // TIMER: heartbeat – re-send tracking command every 60 s
+        Wait(60000, track_heartbeat)
+        {
+            IF (g_AutoTrack)
+            {
+                HTTP_Cmd_Out = "PUT http://" + Camera_IP + "/api/v1/camera/tracking";
+                RetimeWait(60000, track_heartbeat);
+            }
+        }
     }
     ELSE
     {
-        HTTP_Cmd_Out = "PUT http://" + Camera_IP +
-                       "/api/v1/camera/tracking {\"mode\":\"off\"}";
+        HTTP_Cmd_Out = "PUT http://" + Camera_IP + "/api/v1/camera/tracking/off";
+        CancelWait(track_heartbeat);   // TIMER: stop heartbeat when tracking off
     }
 }
 
-// ── RX PARSER ────────────────────────────────────────────────────────────────
-// UDP VISCA responses: ACK (90 4x FF), Completion (90 5x FF), Error (90 6x FF)
+// ── STEPPER: pan/tilt speed ───────────────────────────────────────────────────
+// Speed_Up / Speed_Down adjust both pan and tilt speeds by g_SpeedStep.
+PUSH Speed_Up
+{
+    g_PanSpd  = g_PanSpd  + g_SpeedStep;
+    IF (g_PanSpd  > 24) { g_PanSpd  = 24; }
+    g_TiltSpd = g_TiltSpd + g_SpeedStep;
+    IF (g_TiltSpd > 20) { g_TiltSpd = 20; }
+    _UpdateSpeedFB();
+}
+
+PUSH Speed_Down
+{
+    g_PanSpd  = g_PanSpd  - g_SpeedStep;
+    IF (g_PanSpd  < 1) { g_PanSpd  = 1; }
+    g_TiltSpd = g_TiltSpd - g_SpeedStep;
+    IF (g_TiltSpd < 1) { g_TiltSpd = 1; }
+    _UpdateSpeedFB();
+}
+
+// ── RX PARSER ─────────────────────────────────────────────────────────────────
 CHANGE SerialIn
 {
-    STRING resp[32];
-    resp = SerialIn;
-    CLEARSTRING(SerialIn);
-    // Strip 8-byte UDP header
-    IF (LEN(resp) > 8)
-    {
-        resp = RIGHT(resp, LEN(resp) - 8);
-    }
-    // Check for completion (90 5x FF)
-    IF (LEN(resp) >= 3)
-    {
-        IF (ASC(LEFT(resp,1)) = 0x90 && (ASC(MID(resp,2,1)) & 0xF0) = 0x50)
-        {
-            // Command completed successfully
-        }
-    }
+    // VISCA responses: ACK = 0x90 0x4n 0xFF, Completion = 0x90 0x5n 0xFF
+    // For PTZ the ACK/Completion simply confirm delivery; no state changes needed.
 }
 
-// ── STARTUP ──────────────────────────────────────────────────────────────────
+// ── STARTUP ───────────────────────────────────────────────────────────────────
 Function Main()
 {
-    IF (Default_Pan_Speed  = 0) { Default_Pan_Speed  = 8; }
-    IF (Default_Tilt_Speed = 0) { Default_Tilt_Speed = 6; }
-    IF (Camera_Address     = 0) { Camera_Address     = 1; }
+    g_SeqNum      = 0;
+    g_AutoTrack   = 0;
+    g_ActivePreset = 0;
 
-    g_PanSpeed     = Default_Pan_Speed;
-    g_TiltSpeed    = Default_Tilt_Speed;
-    g_AutoTrack    = 0;
-    g_ActivePreset = 1;
-    g_SeqNum       = 0;
-    g_SaveSlot     = 1;
+    // STEPPER: initialise from parameters (fall back to safe defaults)
+    g_PanSpd  = Default_Pan_Speed;
+    g_TiltSpd = Default_Tilt_Speed;
+    IF (g_PanSpd  < 1 || g_PanSpd  > 24) { g_PanSpd  = 8; }
+    IF (g_TiltSpd < 1 || g_TiltSpd > 20) { g_TiltSpd = 6; }
+    g_SpeedStep = Speed_Step_Size;
+    IF (g_SpeedStep < 1) { g_SpeedStep = 1; }
+    IF (g_SpeedStep > 5) { g_SpeedStep = 5; }
 
-    // Move to home on startup
-    Wait(2000, cam_init)
-    {
-        SendVISCA(VISCA_HOME);
-    }
+    // Reflect initial speed on analog outputs
+    _UpdateSpeedFB();
+
+    // Pre-build constant VISCA commands
+    g_ViscaStop = CHR(129) + CHR(1) + CHR(6) + CHR(1);
+    g_ViscaStop = g_ViscaStop + CHR(8) + CHR(6) + CHR(3) + CHR(3) + CHR(255);
+    g_ZoomStop  = CHR(129) + CHR(1) + CHR(4) + CHR(7) + CHR(0) + CHR(255);
+    g_FocusStop = CHR(129) + CHR(1) + CHR(4) + CHR(8) + CHR(0) + CHR(255);
+    g_FocusAuto = CHR(129) + CHR(1) + CHR(4) + CHR(56) + CHR(2) + CHR(255);
+    g_Home      = CHR(129) + CHR(1) + CHR(6) + CHR(4) + CHR(255);
 }
