@@ -12,7 +12,7 @@ SavedBy=SMW4.3000.01
 ]
 [
 ObjTp=Hd
-CnC=375
+CnC=2
 S0Nd=1
 S1Nd=2
 SLNd=3
@@ -3831,13 +3831,11 @@ C3=31
 ObjTp=Sg
 H=3345
 Nm=Ramp_Active_FB
-SgTp=0
 ]
 
 [
 ObjTp=Sg
 H=3342
-SgTp=0
 Nm=Cam_Speed_At_Max
 ]
 
