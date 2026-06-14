@@ -2946,7 +2946,7 @@ ObjVer=1
 SmVr=1234
 PrH=4
 CF=1
-Cmn1=Amaad Large Conference\
+Cmn1=Amaad Large Conference\\
 
 mC=8
 C1=840
@@ -2968,7 +2968,7 @@ ObjVer=1
 SmVr=1234
 PrH=800
 CF=1
-Cmn1=Power Control\
+Cmn1=Power Control\\
 
 mC=3
 C1=20
@@ -2985,7 +2985,7 @@ ObjVer=1
 SmVr=1234
 PrH=800
 CF=1
-Cmn1=Source Selection\
+Cmn1=Source Selection\\
 
 mC=1
 C1=23
@@ -3000,7 +3000,7 @@ ObjVer=1
 SmVr=1234
 PrH=800
 CF=1
-Cmn1=Display Control\
+Cmn1=Display Control\\
 
 mC=2
 C1=24
@@ -3016,7 +3016,7 @@ ObjVer=1
 SmVr=1234
 PrH=800
 CF=1
-Cmn1=Video Conference\
+Cmn1=Video Conference\\
 
 mC=2
 C1=26
@@ -3032,7 +3032,7 @@ ObjVer=1
 SmVr=1234
 PrH=800
 CF=1
-Cmn1=Audio Control\
+Cmn1=Audio Control\\
 
 mC=2
 C1=28
@@ -3048,7 +3048,7 @@ ObjVer=1
 SmVr=1234
 PrH=800
 CF=1
-Cmn1=Camera Control\
+Cmn1=Camera Control\\
 
 mC=2
 C1=30
@@ -3064,7 +3064,7 @@ ObjVer=1
 SmVr=1234
 PrH=800
 CF=1
-Cmn1=Wireless Presentation\
+Cmn1=Wireless Presentation\\
 
 mC=1
 C1=32
@@ -3342,7 +3342,7 @@ ObjVer=1
 SmVr=1234
 PrH=800
 CF=1
-Cmn1=Spare\
+Cmn1=Spare\\
 
 mC=0
 ]
